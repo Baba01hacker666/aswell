@@ -117,7 +117,7 @@ std::string Environment::get_var(const std::string& name) const {
     }
     // Positional digits 1..9
     if (name.size() == 1 && std::isdigit(static_cast<unsigned char>(name[0]))) {
-        size_t idx = name[0] - '0';
+        size_t idx = static_cast<size_t>(name[0] - '0');
         if (idx > 0 && idx <= current_positional_.size()) {
             return current_positional_[idx - 1];
         }
