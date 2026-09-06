@@ -18,6 +18,7 @@ echo "Dirname using % strip: ${FILE%/*}"
 A=15
 B=4
 echo "Arithmetic $(( (A * 2 + B) / 3 ))"
+# shellcheck disable=SC3019
 echo "Power: $(( 2 ** 8 ))"
 echo "Ternary: $(( A > 10 ? 100 : 0 ))"
 
