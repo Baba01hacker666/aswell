@@ -14,6 +14,7 @@
 #include "aswell/ui/demo.hpp"
 #include <fstream>
 #include <dirent.h>
+#include <sys/stat.h>
 
 using namespace aswell;
 
@@ -192,10 +193,20 @@ int main(int argc, char* argv[]) {
     ShellConfig cfg = ConfigManager::load();
     env.opt_vi_mode = cfg.vi_mode;
 
-    // Load startup file (~/.aswellrc)
+    // Load startup file (~/.aswellrc or ~/.config/aswell/aswellrc)
     const char* home = std::getenv("HOME");
+    std::string rc_path;
     if (home) {
-        std::string rc_path = std::string(home) + "/.aswellrc";
+        std::string p1 = std::string(home) + "/.aswellrc";
+        std::string p2 = ConfigManager::get_config_dir() + "/aswellrc";
+        struct stat st;
+        if (stat(p1.c_str(), &st) == 0) {
+            rc_path = p1;
+        } else if (stat(p2.c_str(), &st) == 0) {
+            rc_path = p2;
+        }
+    }
+    if (!rc_path.empty()) {
         std::ifstream rc_file(rc_path);
         if (rc_file) {
             std::stringstream rcss;
