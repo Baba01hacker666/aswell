@@ -151,6 +151,42 @@ int main(int argc, char* argv[]) {
 
     Executor executor(env, jobs);
 
+    plugins.set_script_runner([&executor](const std::string& script) {
+        return executor.execute_script(script);
+    });
+
+    hooks.set_shell_dispatcher([&executor, &env](HookType type, const std::vector<std::string>& args) {
+        switch (type) {
+            case HookType::ON_START:
+                if (env.has_function("aswell_on_start")) executor.execute_function("aswell_on_start", args);
+                break;
+            case HookType::ON_PROMPT:
+                if (env.has_function("aswell_on_prompt")) executor.execute_function("aswell_on_prompt", args);
+                else if (env.has_function("precmd")) executor.execute_function("precmd", args);
+                break;
+            case HookType::BEFORE_COMMAND:
+                if (env.has_function("aswell_before_command")) executor.execute_function("aswell_before_command", args);
+                else if (env.has_function("preexec")) executor.execute_function("preexec", args);
+                break;
+            case HookType::AFTER_COMMAND:
+                if (env.has_function("aswell_after_command")) executor.execute_function("aswell_after_command", args);
+                else if (env.has_function("postexec")) executor.execute_function("postexec", args);
+                break;
+            case HookType::ON_ERROR:
+                if (env.has_function("aswell_on_error")) executor.execute_function("aswell_on_error", args);
+                break;
+            case HookType::ON_DIR_CHANGE:
+                if (env.has_function("aswell_on_dir_change")) executor.execute_function("aswell_on_dir_change", args);
+                else if (env.has_function("chpwd")) executor.execute_function("chpwd", args);
+                break;
+            case HookType::ON_EXIT:
+                if (env.has_function("aswell_on_exit")) executor.execute_function("aswell_on_exit", args);
+                break;
+            default:
+                break;
+        }
+    });
+
     // 1. Run command string (-c)
     if (!command_string.empty()) {
         SignalManager::init_signals(false);
@@ -215,6 +251,10 @@ int main(int argc, char* argv[]) {
         }
     }
 
+    // Load user plugins from ~/.config/aswell/plugins
+    std::string user_plugin_dir = ConfigManager::get_config_dir() + "/plugins";
+    plugins.load_plugins_from_directory(user_plugin_dir, env.opt_safe_mode);
+
     // Setup prompt engine
     PromptEngine prompt_engine(env);
     if (!env.opt_no_theme) {
@@ -259,8 +299,16 @@ int main(int argc, char* argv[]) {
 
     hooks.trigger_hook(HookType::ON_START);
 
+    std::string last_pwd = env.get_var("PWD");
+
     // Main Interactive REPL loop
     while (true) {
+        std::string cur_pwd = env.get_var("PWD");
+        if (cur_pwd != last_pwd) {
+            hooks.trigger_hook(HookType::ON_DIR_CHANGE, {cur_pwd});
+            last_pwd = cur_pwd;
+        }
+
         hooks.trigger_hook(HookType::ON_PROMPT);
 
         jobs.update_status();
@@ -283,6 +331,35 @@ int main(int argc, char* argv[]) {
 
         if (status != 0) {
             hooks.trigger_hook(HookType::ON_ERROR, {line, std::to_string(status)});
+        }
+
+        // Command execution banner
+        bool show_banner = cfg.enable_command_banner || env.get_var("ASWELL_BANNER") == "1";
+        if (show_banner || (status != 0 && !env.opt_no_theme) || executor.get_last_command_duration_ms() > 2500.0) {
+            bool unicode = Terminal::supports_unicode();
+            std::string tl = unicode ? "╭─" : "+-";
+            std::string stat_badge = (status == 0)
+                ? "\033[1;30;42m ✓ 0 \033[0m"
+                : "\033[1;37;41m ✘ " + std::to_string(status) + " \033[0m";
+
+            std::string dur_str;
+            double dur_ms = executor.get_last_command_duration_ms();
+            if (dur_ms >= 1000.0) {
+                std::ostringstream oss;
+                oss << std::fixed << std::setprecision(2) << (dur_ms / 1000.0) << "s";
+                dur_str = oss.str();
+            } else {
+                dur_str = std::to_string(static_cast<int>(dur_ms)) + "ms";
+            }
+            std::string dur_badge = "\033[1;30;43m ⏱ " + dur_str + " \033[0m";
+
+            std::time_t now = std::time(nullptr);
+            std::tm* tm_info = std::localtime(&now);
+            char tbuf[32];
+            std::strftime(tbuf, sizeof(tbuf), "%H:%M:%S", tm_info);
+            std::string time_badge = "\033[1;30;47m " + std::string(tbuf) + " \033[0m";
+
+            std::cout << "\033[90m" << tl << " \033[0m" << stat_badge << " " << dur_badge << " " << time_badge << "\r\n";
         }
     }
 

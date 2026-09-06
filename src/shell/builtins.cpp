@@ -865,6 +865,39 @@ int Builtins::builtin_aswell(const std::vector<std::string>& args, Environment& 
             return 0;
         }
     }
+    if (sub == "banner") {
+        if (args.size() >= 3 && args[2] == "on") {
+            env.set_var("ASWELL_BANNER", "1");
+            std::cout << "Command execution ribbon enabled.\n";
+            return 0;
+        } else if (args.size() >= 3 && args[2] == "off") {
+            env.set_var("ASWELL_BANNER", "0");
+            std::cout << "Command execution ribbon disabled.\n";
+            return 0;
+        }
+        std::cout << "Usage: aswell banner [on | off]\n";
+        return 0;
+    }
+    if (sub == "hooks" || sub == "hook") {
+        std::cout << "\033[1;34mAswell Dynamic Script Hooks:\033[0m\n"
+                  << "  * \033[1;36maswell_on_prompt\033[0m     - Triggered before prompt render (or 'precmd')\n"
+                  << "  * \033[1;36maswell_before_command\033[0m - Triggered before execution (or 'preexec') with $1=command\n"
+                  << "  * \033[1;36maswell_after_command\033[0m  - Triggered after execution with $1=cmd, $2=ms, $3=status\n"
+                  << "  * \033[1;36maswell_on_error\033[0m      - Triggered on non-zero exit with $1=cmd, $2=status\n"
+                  << "  * \033[1;36maswell_on_dir_change\033[0m - Triggered on cd/dir change with $1=new_dir\n"
+                  << "  * \033[1;36maswell_on_exit\033[0m       - Triggered when shell exits\n";
+        return 0;
+    }
+    if (sub == "ui") {
+        std::cout << "\033[1;34mAswell Modern UI Cockpit Status:\033[0m\n"
+                  << "  * \033[1;32mLeft Prompt\033[0m      : HTML/CSS rendered\n"
+                  << "  * \033[1;32mRight Prompt\033[0m     : Supported via <rprompt> with column alignment\n"
+                  << "  * \033[1;32mStatus Bar Dock\033[0m  : Supported via <statusbar> top/bottom banner\n"
+                  << "  * \033[1;32mAutocomplete\033[0m     : Modern typed popup cards [CMD, DIR, BUILT, ALIAS, FUNC, FLAG, VAR]\n"
+                  << "  * \033[1;32mExecution Banner\033[0m : Active on status != 0 or long running commands\n"
+                  << "  * \033[1;32mReactive DOM\033[0m     : $VAR expansion + 'show-if' / 'hide-if' conditional rendering\n";
+        return 0;
+    }
 
     std::cout << "Unknown aswell command: " << sub << ". Run 'aswell help' for options.\n";
     return 1;

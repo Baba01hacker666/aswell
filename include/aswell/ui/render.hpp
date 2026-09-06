@@ -10,6 +10,9 @@ struct RenderResult {
     std::string ansi_output;
     int total_lines = 1;
     int last_line_width = 0;
+    std::string rprompt_ansi;
+    int rprompt_width = 0;
+    std::string statusbar_ansi;
 };
 
 class TerminalRenderer {

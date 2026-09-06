@@ -1,0 +1,107 @@
+prompt.cockpit {
+    display: block;
+}
+
+/* Status Bar Dock */
+.dock {
+    display: block;
+    margin-bottom: 1;
+}
+
+.os {
+    background: #6272a4;
+    color: #ffffff;
+    font-weight: bold;
+    padding: 0 1;
+    margin-right: 1;
+}
+
+.load {
+    background: #bd93f9;
+    color: #282a36;
+    font-weight: bold;
+    padding: 0 1;
+    margin-right: 1;
+}
+
+.mem {
+    background: #50fa7b;
+    color: #282a36;
+    font-weight: bold;
+    padding: 0 1;
+    margin-right: 1;
+}
+
+.job {
+    background: #ffb86c;
+    color: #282a36;
+    padding: 0 1;
+    margin-right: 1;
+}
+
+.err {
+    background: #ff5555;
+    color: #ffffff;
+    font-weight: bold;
+    animation: glitch 400ms infinite;
+    padding: 0 1;
+    margin-right: 1;
+}
+
+/* Prompt Line */
+.bracket {
+    color: #6272a4;
+}
+
+.usr {
+    color: #8be9fd;
+    font-weight: bold;
+    animation: scramble 60ms infinite;
+}
+
+.at {
+    color: #6272a4;
+}
+
+.host {
+    color: #bd93f9;
+    font-weight: bold;
+}
+
+.sep {
+    color: #6272a4;
+}
+
+.path {
+    color: #50fa7b;
+    font-weight: bold;
+}
+
+/* Right Prompt */
+.git {
+    background: #ffb86c;
+    color: #282a36;
+    font-weight: bold;
+    padding: 0 1;
+    margin-right: 1;
+}
+
+.clock {
+    background: #44475a;
+    color: #f8f8f2;
+    padding: 0 1;
+}
+
+/* Symbol */
+symbol {
+    color: #ff79c6;
+    animation: pulse 1200ms infinite;
+}
+
+.mode {
+    background: #ffb86c;
+    color: #282a36;
+    font-weight: bold;
+    padding: 0 1;
+    margin-right: 1;
+}

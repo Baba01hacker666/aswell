@@ -24,7 +24,11 @@ void UIElement::add_class(const std::string& cls) {
 }
 
 void UIElement::apply_styles(const StyleSheet& sheet) {
+    bool was_none = (computed_style.display == DisplayType::NONE);
     computed_style = sheet.compute_style(tag, classes, id, pseudos);
+    if (was_none) {
+        computed_style.display = DisplayType::NONE;
+    }
 
     // Apply content override if present
     if (computed_style.content_override.has_value()) {
@@ -192,7 +196,20 @@ std::shared_ptr<UIElement> DOMParser::parse_element(std::string_view html, size_
 std::shared_ptr<UIElement> DOMParser::parse(std::string_view html) {
     size_t pos = 0;
     skip_ws(html, pos);
-    return parse_element(html, pos);
+    auto first = parse_element(html, pos);
+    skip_ws(html, pos);
+    if (pos >= html.size()) {
+        return first;
+    }
+    // Multiple top-level elements (e.g. <statusbar> and <prompt>)
+    auto root = std::make_shared<UIElement>("ui-root");
+    if (first) root->add_child(first);
+    while (pos < html.size()) {
+        auto next = parse_element(html, pos);
+        if (next) root->add_child(next);
+        skip_ws(html, pos);
+    }
+    return root;
 }
 
 } // namespace aswell

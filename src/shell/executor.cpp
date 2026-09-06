@@ -731,6 +731,14 @@ int Executor::execute_function_call(FunctionDefNode& func, const std::vector<std
     return status;
 }
 
+int Executor::execute_function(const std::string& name, const std::vector<std::string>& args) {
+    if (!env_.has_function(name)) return 0;
+    auto func = env_.get_function(name);
+    if (!func) return 0;
+    ControlFlow flow;
+    return execute_function_call(*func, args, flow);
+}
+
 std::vector<std::string> Executor::find_similar_commands(const std::string& target) const {
     std::vector<std::pair<int, std::string>> candidates;
 

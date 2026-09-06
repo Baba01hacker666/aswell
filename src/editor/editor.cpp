@@ -122,6 +122,17 @@ void LineEditor::refresh_line(const std::string& prompt_ansi, int prompt_visual_
         std::cout << "\033[90m" << sugg_suffix << "\033[0m";
     }
 
+    // Right prompt on single-line prompt if space permits
+    if (rprompt_width_ > 0 && !rprompt_ansi_.empty()) {
+        int term_cols = Terminal::get_size().cols;
+        size_t buf_w = str_util::visual_width(buffer_);
+        int used = prompt_visual_width + static_cast<int>(buf_w) + (sugg_suffix.empty() ? 0 : static_cast<int>(str_util::visual_width(sugg_suffix)));
+        if (used + rprompt_width_ + 2 < term_cols) {
+            int pad = term_cols - used - rprompt_width_;
+            std::cout << std::string(static_cast<size_t>(pad), ' ') << rprompt_ansi_;
+        }
+    }
+
     // Calculate cursor position
     size_t cursor_visual_offset = str_util::visual_width(buffer_.substr(0, cursor_pos_));
     int target_col = prompt_visual_width + static_cast<int>(cursor_visual_offset) + 1;
@@ -197,18 +208,86 @@ void LineEditor::show_completion_menu(const std::vector<CompletionCandidate>& ca
         return;
     }
 
-    std::cout << "\n";
-    size_t max_disp = std::min<size_t>(candidates.size(), 12);
+    // Render modern autocomplete popup card
+    bool unicode = Terminal::supports_unicode();
+    int term_cols = Terminal::get_size().cols;
+    if (term_cols < 30) term_cols = 80;
+    int card_width = std::min(term_cols - 4, 76);
+
+    std::string tl = unicode ? "╭─" : "+-";
+    std::string tr = unicode ? "─╮" : "-+";
+    std::string bl = unicode ? "╰─" : "+-";
+    std::string br = unicode ? "─╯" : "-+";
+    std::string bar = unicode ? "│" : "|";
+    std::string horiz = unicode ? "─" : "-";
+
+    std::string title = " Suggestions (" + std::to_string(candidates.size()) + " matches) ";
+    int h_fill = card_width - static_cast<int>(title.size()) - 2;
+    if (h_fill < 2) h_fill = 2;
+
+    std::cout << "\r\n\033[1;34m" << tl << title;
+    for (int i = 0; i < h_fill; ++i) std::cout << horiz;
+    std::cout << tr << "\033[0m\r\n";
+
+    size_t max_disp = std::min<size_t>(candidates.size(), 10);
     for (size_t i = 0; i < max_disp; ++i) {
-        std::cout << "  \033[36m" << candidates[i].display_name << "\033[0m";
-        if (!candidates[i].description.empty()) {
-            std::cout << " \033[90m(" << candidates[i].description << ")\033[0m";
+        const auto& c = candidates[i];
+        std::string badge_tag = "CMD  ";
+        std::string badge_color = "\033[1;36m";
+
+        if (c.is_directory) {
+            badge_tag = "DIR/ ";
+            badge_color = "\033[1;34m";
+        } else if (c.description == "builtin" || c.description.find("directory") != std::string::npos ||
+                   c.description.find("print") != std::string::npos || c.description.find("Exit") != std::string::npos) {
+            badge_tag = "BUILT";
+            badge_color = "\033[1;35m";
+        } else if (c.description == "alias") {
+            badge_tag = "ALIAS";
+            badge_color = "\033[1;33m";
+        } else if (c.description == "function") {
+            badge_tag = "FUNC ";
+            badge_color = "\033[1;32m";
+        } else if (str_util::starts_with(c.text, "-")) {
+            badge_tag = "FLAG ";
+            badge_color = "\033[1;33m";
+        } else if (str_util::starts_with(c.text, "$")) {
+            badge_tag = "VAR  ";
+            badge_color = "\033[1;35m";
         }
-        std::cout << "\n";
+
+        std::string row_left = "  " + badge_color + "[" + badge_tag + "]\033[0m \033[1;97m" + c.display_name + "\033[0m";
+        int vis_left = 2 + 7 + 1 + static_cast<int>(str_util::visual_width(c.display_name));
+
+        std::string row_desc;
+        if (!c.description.empty() && c.description != "command") {
+            row_desc = "\033[90m(" + c.description + ")\033[0m";
+        }
+        int vis_desc = row_desc.empty() ? 0 : static_cast<int>(str_util::visual_width(c.description)) + 2;
+
+        std::cout << "\033[1;34m" << bar << "\033[0m" << row_left;
+        int pad = card_width - vis_left - vis_desc - 2;
+        if (pad > 0) {
+            std::cout << std::string(static_cast<size_t>(pad), ' ');
+        }
+        if (!row_desc.empty()) {
+            std::cout << row_desc;
+        }
+        std::cout << " \033[1;34m" << bar << "\033[0m\r\n";
     }
-    if (candidates.size() > 12) {
-        std::cout << "  \033[90m... and " << (candidates.size() - 12) << " more\033[0m\n";
+
+    if (candidates.size() > 10) {
+        std::string more_txt = "  ... and " + std::to_string(candidates.size() - 10) + " more candidates";
+        int pad = card_width - static_cast<int>(more_txt.size()) - 3;
+        std::cout << "\033[1;34m" << bar << "\033[0m\033[90m" << more_txt << "\033[0m";
+        if (pad > 0) std::cout << std::string(static_cast<size_t>(pad), ' ');
+        std::cout << " \033[1;34m" << bar << "\033[0m\r\n";
     }
+
+    std::cout << "\033[1;34m" << bl;
+    for (int i = 0; i < card_width; ++i) std::cout << horiz;
+    std::cout << br << "\033[0m\r\n";
+    std::cout.flush();
 }
 
 std::optional<std::string> LineEditor::read_line(double last_duration_ms, size_t active_jobs) {
@@ -228,6 +307,14 @@ std::optional<std::string> LineEditor::read_line(double last_duration_ms, size_t
     auto initial_ctx = prompt_engine_.gather_context(last_duration_ms, active_jobs, false);
     RenderResult initial_pr = prompt_engine_.render(initial_ctx, AnimationEngine::now_ms());
 
+    // Print status bar dock if present
+    if (!initial_pr.statusbar_ansi.empty()) {
+        std::cout << initial_pr.statusbar_ansi << "\r\n";
+    }
+
+    rprompt_ansi_ = initial_pr.rprompt_ansi;
+    rprompt_width_ = initial_pr.rprompt_width;
+
     std::string header_lines;
     std::string input_prompt = initial_pr.ansi_output;
     int input_prompt_width = initial_pr.last_line_width;
@@ -236,6 +323,8 @@ std::optional<std::string> LineEditor::read_line(double last_duration_ms, size_t
     if (last_nl != std::string::npos) {
         header_lines = initial_pr.ansi_output.substr(0, last_nl + 1);
         input_prompt = initial_pr.ansi_output.substr(last_nl + 1);
+        rprompt_ansi_.clear();
+        rprompt_width_ = 0;
     }
 
     // Print multi-line header ONCE

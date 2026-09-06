@@ -1,0 +1,29 @@
+<prompt class="cockpit">
+  <statusbar class="dock">
+    <badge class="os"> 🐧 LINUX </badge>
+    <badge class="load"> ⚡ CPU: $SYS_LOAD </badge>
+    <badge class="mem"> 💾 MEM: $SYS_MEM </badge>
+    <badge class="job" show-if="$JOBS != 0"> ⚙ $JOBS </badge>
+    <badge class="err" show-if="$STATUS != 0"> ✘ $STATUS </badge>
+  </statusbar>
+  <newline />
+  <segment class="top-line">
+    <text class="bracket">╭─ </text>
+    <badge class="usr">$USER</badge>
+    <text class="at">@</text>
+    <badge class="host">$HOSTNAME</badge>
+    <text class="sep"> in </text>
+    <badge class="path">$CWD</badge>
+  </segment>
+  <rprompt class="right">
+    <badge class="git" show-if="$GIT_BRANCH != ''">⎇ $GIT_BRANCH</badge>
+    <badge class="clock">🕒 $TIME</badge>
+  </rprompt>
+  <newline />
+  <segment class="bottom-line">
+    <text class="bracket">╰─</text>
+    <badge class="mode" show-if="$MODE == 'NORMAL'">[NORMAL]</badge>
+    <symbol>❯</symbol>
+    <text> </text>
+  </segment>
+</prompt>

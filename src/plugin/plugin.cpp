@@ -1,6 +1,7 @@
 #include <iomanip>
 #include "aswell/plugin/plugin.hpp"
 #include <dirent.h>
+#include <fstream>
 
 namespace aswell {
 
@@ -95,7 +96,13 @@ void PluginManager::load_plugins_from_directory(const std::string& dir_path, boo
         if (ent->d_name[0] == '.') continue;
         std::string fname = ent->d_name;
         if (str_util::ends_with(fname, ".sh") || str_util::ends_with(fname, ".aswell")) {
-            // Shell script plugin - can be executed on start
+            std::string full_path = dir_path + "/" + fname;
+            std::ifstream file(full_path);
+            if (file && script_runner_) {
+                std::stringstream ss;
+                ss << file.rdbuf();
+                script_runner_(ss.str());
+            }
         }
     }
     closedir(dir);

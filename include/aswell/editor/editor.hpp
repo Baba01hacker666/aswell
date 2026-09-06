@@ -49,6 +49,8 @@ private:
     int history_index_ = -1;
     std::string saved_current_buffer_;
     bool command_anim_enabled_ = false;
+    std::string rprompt_ansi_;
+    int rprompt_width_ = 0;
 };
 
 } // namespace aswell

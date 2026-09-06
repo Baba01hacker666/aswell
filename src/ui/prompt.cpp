@@ -196,12 +196,101 @@ PromptContext PromptEngine::gather_context(double last_duration_ms, size_t activ
     std::strftime(tbuf, sizeof(tbuf), "%H:%M:%S", tm_info);
     ctx.time_str = tbuf;
 
+    // Export standard environment variables for dynamic DOM binding
+    env_.set_var("USER", ctx.user);
+    env_.set_var("HOSTNAME", ctx.hostname);
+    env_.set_var("CWD", ctx.cwd);
+    env_.set_var("GIT_BRANCH", ctx.git_branch);
+    env_.set_var("STATUS", std::to_string(ctx.last_status));
+    env_.set_var("JOBS", std::to_string(ctx.active_jobs));
+    env_.set_var("MODE", ctx.vi_normal_mode ? "NORMAL" : "INSERT");
+    env_.set_var("TIME", ctx.time_str);
+
     return ctx;
 }
 
-static void populate_dom_data(std::shared_ptr<UIElement> elem, const PromptContext& ctx) {
+static std::string expand_vars(const std::string& input, const Environment& env) {
+    if (input.empty() || input.find('$') == std::string::npos) {
+        return input;
+    }
+    std::string result;
+    result.reserve(input.size() * 2);
+    for (size_t i = 0; i < input.size(); ++i) {
+        if (input[i] == '$') {
+            if (i + 1 < input.size() && input[i + 1] == '{') {
+                size_t close = input.find('}', i + 2);
+                if (close != std::string::npos) {
+                    std::string var_name = input.substr(i + 2, close - (i + 2));
+                    result += env.get_var(var_name);
+                    i = close;
+                    continue;
+                }
+            } else if (i + 1 < input.size() && (std::isalnum(static_cast<unsigned char>(input[i + 1])) || input[i + 1] == '_')) {
+                size_t start = i + 1;
+                size_t len = 0;
+                while (start + len < input.size() && (std::isalnum(static_cast<unsigned char>(input[start + len])) || input[start + len] == '_')) {
+                    len++;
+                }
+                std::string var_name = input.substr(start, len);
+                result += env.get_var(var_name);
+                i = start + len - 1;
+                continue;
+            }
+        }
+        result += input[i];
+    }
+    return result;
+}
+
+static bool evaluate_condition(const std::string& cond, const Environment& env) {
+    std::string expanded = expand_vars(str_util::trim(cond), env);
+    if (expanded.empty()) return false;
+
+    // Check !=
+    size_t neq = expanded.find("!=");
+    if (neq != std::string::npos) {
+        std::string lhs = str_util::trim(expanded.substr(0, neq));
+        std::string rhs = str_util::trim(expanded.substr(neq + 2));
+        if (rhs.size() >= 2 && ((rhs.front() == '"' && rhs.back() == '"') || (rhs.front() == '\'' && rhs.back() == '\''))) {
+            rhs = rhs.substr(1, rhs.size() - 2);
+        }
+        if (lhs.size() >= 2 && ((lhs.front() == '"' && lhs.back() == '"') || (lhs.front() == '\'' && lhs.back() == '\''))) {
+            lhs = lhs.substr(1, lhs.size() - 2);
+        }
+        return lhs != rhs;
+    }
+
+    // Check ==
+    size_t eq = expanded.find("==");
+    if (eq != std::string::npos) {
+        std::string lhs = str_util::trim(expanded.substr(0, eq));
+        std::string rhs = str_util::trim(expanded.substr(eq + 2));
+        if (rhs.size() >= 2 && ((rhs.front() == '"' && rhs.back() == '"') || (rhs.front() == '\'' && rhs.back() == '\''))) {
+            rhs = rhs.substr(1, rhs.size() - 2);
+        }
+        if (lhs.size() >= 2 && ((lhs.front() == '"' && lhs.back() == '"') || (lhs.front() == '\'' && lhs.back() == '\''))) {
+            lhs = lhs.substr(1, lhs.size() - 2);
+        }
+        return lhs == rhs;
+    }
+
+    return expanded != "0" && expanded != "false";
+}
+
+static void populate_dom_data(std::shared_ptr<UIElement> elem, const PromptContext& ctx, const Environment& env) {
     if (!elem) return;
 
+    // 1. Reactive conditional directives (v-if style)
+    std::string show_cond = elem->get_attribute("show-if");
+    if (!show_cond.empty() && !evaluate_condition(show_cond, env)) {
+        elem->computed_style.display = DisplayType::NONE;
+    }
+    std::string hide_cond = elem->get_attribute("hide-if");
+    if (!hide_cond.empty() && evaluate_condition(hide_cond, env)) {
+        elem->computed_style.display = DisplayType::NONE;
+    }
+
+    // 2. Builtin tags
     if (elem->tag == "user") {
         elem->text_content = ctx.user;
     } else if (elem->tag == "hostname") {
@@ -260,25 +349,107 @@ static void populate_dom_data(std::shared_ptr<UIElement> elem, const PromptConte
         }
     } else if (elem->tag == "time") {
         elem->text_content = ctx.time_str;
+    } else {
+        // Dynamic variable expansion on text content
+        elem->text_content = expand_vars(elem->text_content, env);
     }
 
-    for (auto& child : elem->children) {
-        populate_dom_data(child, ctx);
+    // 3. Dynamic classes with $VAR
+    std::set<std::string> updated_classes;
+    for (const auto& c : elem->classes) {
+        if (c.find('$') != std::string::npos) {
+            std::string exp = expand_vars(c, env);
+            auto spl = str_util::split(exp, ' ');
+            for (const auto& sc : spl) {
+                std::string tsc = str_util::trim(sc);
+                if (!tsc.empty()) updated_classes.insert(tsc);
+            }
+        } else {
+            updated_classes.insert(c);
+        }
     }
+    elem->classes = std::move(updated_classes);
+
+    for (auto& child : elem->children) {
+        populate_dom_data(child, ctx, env);
+    }
+}
+
+static std::shared_ptr<UIElement> extract_element_by_tag(std::shared_ptr<UIElement>& root, const std::string& tag) {
+    if (!root) return nullptr;
+    if (root->tag == tag) {
+        auto found = root;
+        root = std::make_shared<UIElement>("segment");
+        return found;
+    }
+    for (auto it = root->children.begin(); it != root->children.end(); ++it) {
+        if ((*it)->tag == tag) {
+            auto found = *it;
+            root->children.erase(it);
+            return found;
+        }
+        auto sub = extract_element_by_tag(*it, tag);
+        if (sub) return sub;
+    }
+    return nullptr;
 }
 
 RenderResult PromptEngine::render(const PromptContext& ctx, uint64_t timestamp_ms) {
     auto dom = DOMParser::parse(template_html_);
     if (!dom) return RenderResult();
 
-    populate_dom_data(dom, ctx);
-    dom->apply_styles(stylesheet_);
+    populate_dom_data(dom, ctx, env_);
 
-    auto layout = LayoutEngine::compute_layout(dom, 80, timestamp_ms);
+    int term_cols = Terminal::get_size().cols;
+    if (term_cols < 20) term_cols = 80;
+
+    RenderResult result;
     bool truecolor = Terminal::supports_truecolor();
     bool unicode = Terminal::supports_unicode();
 
-    return TerminalRenderer::render(layout, timestamp_ms, truecolor, unicode);
+    // 1. Separate Status Bar component (<statusbar>)
+    auto statusbar_elem = extract_element_by_tag(dom, "statusbar");
+    if (statusbar_elem && statusbar_elem->computed_style.display != DisplayType::NONE) {
+        statusbar_elem->apply_styles(stylesheet_);
+        auto slayout = LayoutEngine::compute_layout(statusbar_elem, term_cols, timestamp_ms);
+        auto sres = TerminalRenderer::render(slayout, timestamp_ms, truecolor, unicode);
+        result.statusbar_ansi = sres.ansi_output;
+    }
+
+    // 2. Separate Right Prompt component (<rprompt>)
+    auto rprompt_elem = extract_element_by_tag(dom, "rprompt");
+    if (rprompt_elem && rprompt_elem->computed_style.display != DisplayType::NONE) {
+        rprompt_elem->apply_styles(stylesheet_);
+        auto rlayout = LayoutEngine::compute_layout(rprompt_elem, term_cols, timestamp_ms);
+        auto rres = TerminalRenderer::render(rlayout, timestamp_ms, truecolor, unicode);
+        result.rprompt_ansi = rres.ansi_output;
+        result.rprompt_width = rres.last_line_width;
+    }
+
+    // 3. Render main prompt tree
+    dom->apply_styles(stylesheet_);
+    auto layout = LayoutEngine::compute_layout(dom, term_cols, timestamp_ms);
+    auto main_res = TerminalRenderer::render(layout, timestamp_ms, truecolor, unicode);
+
+    result.ansi_output = main_res.ansi_output;
+    result.total_lines = main_res.total_lines;
+    result.last_line_width = main_res.last_line_width;
+
+    // If rprompt exists and main prompt has multiple lines, format rprompt right-aligned on line 1
+    if (result.rprompt_width > 0 && !result.rprompt_ansi.empty()) {
+        size_t nl = result.ansi_output.find('\n');
+        if (nl != std::string::npos) {
+            std::string line1 = result.ansi_output.substr(0, nl);
+            int line1_w = static_cast<int>(str_util::visual_width(line1));
+            if (line1_w + result.rprompt_width < term_cols) {
+                int pad = term_cols - line1_w - result.rprompt_width;
+                std::string padded_line1 = line1 + std::string(static_cast<size_t>(pad), ' ') + result.rprompt_ansi;
+                result.ansi_output = padded_line1 + result.ansi_output.substr(nl);
+            }
+        }
+    }
+
+    return result;
 }
 
 } // namespace aswell

@@ -26,6 +26,10 @@ class PluginManager {
 public:
     explicit PluginManager(Environment& env, HookManager& hooks);
 
+    void set_script_runner(std::function<int(const std::string&)> runner) {
+        script_runner_ = std::move(runner);
+    }
+
     void load_builtins();
     void load_plugins_from_directory(const std::string& dir_path, bool safe_mode);
     void register_plugin(std::shared_ptr<Plugin> plugin);
@@ -36,6 +40,7 @@ private:
     Environment& env_;
     HookManager& hooks_;
     std::vector<std::shared_ptr<Plugin>> plugins_;
+    std::function<int(const std::string&)> script_runner_;
 };
 
 } // namespace aswell

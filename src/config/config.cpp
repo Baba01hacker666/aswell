@@ -61,6 +61,7 @@ ShellConfig ConfigManager::load() {
         else if (k == "show_jobs") cfg.show_jobs = (v == "true" || v == "1");
         else if (k == "show_status") cfg.show_status = (v == "true" || v == "1");
         else if (k == "command_animation") cfg.enable_command_animation = (v == "true" || v == "1");
+        else if (k == "command_banner") cfg.enable_command_banner = (v == "true" || v == "1");
         else if (k == "vi_mode") cfg.vi_mode = (v == "true" || v == "1");
     }
 
@@ -89,6 +90,7 @@ void ConfigManager::save(const ShellConfig& cfg) {
     f << "show_jobs=" << (cfg.show_jobs ? "true" : "false") << "\n";
     f << "show_status=" << (cfg.show_status ? "true" : "false") << "\n";
     f << "command_animation=" << (cfg.enable_command_animation ? "true" : "false") << "\n";
+    f << "command_banner=" << (cfg.enable_command_banner ? "true" : "false") << "\n";
     f << "vi_mode=" << (cfg.vi_mode ? "true" : "false") << "\n";
 }
 
