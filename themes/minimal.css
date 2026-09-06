@@ -1,0 +1,35 @@
+/* Minimal Theme for Aswell */
+prompt.main {
+    display: block;
+}
+.bracket {
+    color: #666666;
+}
+user {
+    color: #ffffff;
+}
+.at {
+    color: #666666;
+}
+hostname {
+    color: #aaaaaa;
+}
+directory {
+    color: #ffffff;
+    font-weight: bold;
+    margin-left: 1;
+}
+git {
+    color: #888888;
+    margin-left: 1;
+}
+runtime {
+    color: #666666;
+    margin-left: 1;
+}
+symbol {
+    color: #ffffff;
+}
+symbol.error {
+    color: #ff4444;
+}

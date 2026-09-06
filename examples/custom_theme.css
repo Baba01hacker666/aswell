@@ -1,0 +1,23 @@
+/* Custom Matrix Green Theme for Aswell */
+prompt.main {
+    display: block;
+}
+.bracket {
+    color: #00ff66;
+}
+user {
+    color: #33ff33;
+    font-weight: bold;
+}
+directory {
+    color: #00ff00;
+    font-weight: bold;
+}
+git {
+    color: #66ff66;
+    margin-left: 1;
+}
+symbol {
+    color: #00ff00;
+    animation: pulse 1200ms infinite;
+}

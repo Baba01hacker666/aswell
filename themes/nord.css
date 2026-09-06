@@ -1,0 +1,55 @@
+/* Nord Arctic Theme for Aswell */
+prompt.main {
+    display: block;
+}
+.bracket {
+    color: #4c566a;
+}
+user {
+    color: #88c0d0;
+    font-weight: bold;
+}
+.at {
+    color: #4c566a;
+}
+hostname {
+    color: #81a1c1;
+}
+.sep {
+    color: #4c566a;
+}
+directory {
+    color: #eceff4;
+    font-weight: bold;
+}
+git {
+    color: #a3be8c;
+    margin-left: 1;
+}
+git.dirty {
+    color: #ebcb8b;
+}
+runtime {
+    color: #81a1c1;
+    margin-left: 1;
+}
+status.error {
+    color: #bf616a;
+    margin-left: 1;
+}
+jobs {
+    color: #b48ead;
+    margin-left: 1;
+}
+mode.normal {
+    color: #ebcb8b;
+    font-weight: bold;
+    margin-right: 1;
+}
+symbol {
+    color: #88c0d0;
+    animation: pulse 2000ms infinite;
+}
+symbol.error {
+    color: #bf616a;
+}

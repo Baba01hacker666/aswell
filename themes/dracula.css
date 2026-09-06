@@ -1,0 +1,44 @@
+/* Dracula Theme for Aswell */
+prompt.main {
+    display: block;
+}
+.bracket {
+    color: #6272a4;
+}
+user {
+    color: #8be9fd;
+    font-weight: bold;
+}
+.at {
+    color: #6272a4;
+}
+hostname {
+    color: #bd93f9;
+}
+directory {
+    color: #50fa7b;
+    font-weight: bold;
+    margin-left: 1;
+}
+git {
+    color: #f1fa8c;
+    margin-left: 1;
+}
+git.dirty {
+    color: #ffb86c;
+}
+runtime {
+    color: #ff79c6;
+    margin-left: 1;
+}
+status.error {
+    color: #ff5555;
+    margin-left: 1;
+}
+symbol {
+    color: #bd93f9;
+    animation: rainbow 3000ms infinite;
+}
+symbol.error {
+    color: #ff5555;
+}

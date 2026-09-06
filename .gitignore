@@ -1,0 +1,12 @@
+# Binaries and build artifacts
+bin/
+*.o
+*.a
+*.so
+
+# Editor & OS files
+.vscode/
+.idea/
+.DS_Store
+*.swp
+*~

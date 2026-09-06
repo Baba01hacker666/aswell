@@ -1,0 +1,57 @@
+/* Cyberpunk 2077 Theme for Aswell */
+prompt.main {
+    display: block;
+}
+.bracket {
+    color: #ff007f;
+    font-weight: bold;
+}
+user {
+    color: #00f0ff;
+    font-weight: bold;
+}
+.at {
+    color: #fee715;
+}
+hostname {
+    color: #00f0ff;
+}
+.sep {
+    color: #ff007f;
+}
+directory {
+    color: #fee715;
+    font-weight: bold;
+}
+git {
+    color: #00f0ff;
+    margin-left: 1;
+}
+git.dirty {
+    color: #ff007f;
+}
+runtime {
+    color: #00f0ff;
+    margin-left: 1;
+}
+status.error {
+    color: #ff0055;
+    margin-left: 1;
+    font-weight: bold;
+}
+jobs {
+    color: #fee715;
+    margin-left: 1;
+}
+mode.normal {
+    color: #fee715;
+    font-weight: bold;
+    margin-right: 1;
+}
+symbol {
+    color: #00f0ff;
+    animation: fire 1000ms infinite;
+}
+symbol.error {
+    color: #ff0055;
+}

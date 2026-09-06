@@ -1,0 +1,33 @@
+/* Powerline Segmented Theme for Aswell */
+prompt.main {
+    display: block;
+}
+user {
+    color: #ffffff;
+    background: #6272a4;
+    padding: 0 1;
+    font-weight: bold;
+}
+directory {
+    color: #282a36;
+    background: #50fa7b;
+    padding: 0 1;
+    font-weight: bold;
+}
+git {
+    color: #282a36;
+    background: #f1fa8c;
+    padding: 0 1;
+}
+status.error {
+    color: #ffffff;
+    background: #ff5555;
+    padding: 0 1;
+}
+symbol {
+    color: #50fa7b;
+    margin-left: 1;
+}
+symbol.error {
+    color: #ff5555;
+}

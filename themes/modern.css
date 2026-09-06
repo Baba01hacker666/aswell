@@ -1,0 +1,59 @@
+/* Modern Default Theme for Aswell */
+prompt.main {
+    display: block;
+}
+.bracket {
+    color: #6272a4;
+}
+user {
+    color: #8be9fd;
+    font-weight: bold;
+}
+.at {
+    color: #6272a4;
+}
+hostname {
+    color: #bd93f9;
+}
+.sep {
+    color: #6272a4;
+}
+directory {
+    color: #50fa7b;
+    font-weight: bold;
+}
+git {
+    color: #f1fa8c;
+    margin-left: 1;
+}
+git.dirty {
+    color: #ffb86c;
+}
+runtime {
+    color: #f1fa8c;
+    margin-left: 1;
+}
+status.error {
+    color: #ff5555;
+    margin-left: 1;
+    font-weight: bold;
+}
+status.success {
+    color: #50fa7b;
+}
+jobs {
+    color: #ff79c6;
+    margin-left: 1;
+}
+mode.normal {
+    color: #ffb86c;
+    font-weight: bold;
+    margin-right: 1;
+}
+symbol {
+    color: #ff79c6;
+    animation: pulse 1500ms infinite;
+}
+symbol.error {
+    color: #ff5555;
+}
