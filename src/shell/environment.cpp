@@ -37,9 +37,17 @@ Environment::Environment() {
     if (!has_var("IFS")) {
         set_var("IFS", " \t\n", false);
     }
-    if (!has_var("PATH")) {
-        set_var("PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", true);
+    
+    const char* home_env = std::getenv("HOME");
+    std::string home_str = home_env ? home_env : "/root";
+    std::string custom_cmd_dir = home_str + "/.config/aswell/commands";
+    std::string custom_bin_dir = home_str + "/.config/aswell/bin";
+
+    std::string cur_path = has_var("PATH") ? get_var("PATH") : "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin";
+    if (cur_path.find(custom_cmd_dir) == std::string::npos) {
+        cur_path = custom_cmd_dir + ":" + custom_bin_dir + ":" + cur_path;
     }
+    set_var("PATH", cur_path, true);
 
     set_var("SHELL", "aswell", true);
 }
@@ -366,6 +374,18 @@ std::string Environment::find_in_path(const std::string& cmd) const {
         std::string full_path = p.empty() ? cmd : (p + "/" + cmd);
         if (access(full_path.c_str(), X_OK) == 0) {
             return full_path;
+        }
+        if (access((full_path + ".sh").c_str(), X_OK) == 0) {
+            return full_path + ".sh";
+        }
+        // If in user custom commands folder, allow readable scripts
+        if (p.find("/.config/aswell/commands") != std::string::npos || p.find("/.config/aswell/bin") != std::string::npos) {
+            if (access(full_path.c_str(), R_OK) == 0) {
+                return full_path;
+            }
+            if (access((full_path + ".sh").c_str(), R_OK) == 0) {
+                return full_path + ".sh";
+            }
         }
     }
     return "";

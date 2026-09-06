@@ -235,7 +235,10 @@ void LineEditor::show_completion_menu(const std::vector<CompletionCandidate>& ca
         std::string badge_tag = "CMD  ";
         std::string badge_color = "\033[1;36m";
 
-        if (c.is_directory) {
+        if (c.description == "custom command") {
+            badge_tag = "CUSTOM";
+            badge_color = "\033[1;92m"; // Bright Green
+        } else if (c.is_directory) {
             badge_tag = "DIR/ ";
             badge_color = "\033[1;34m";
         } else if (c.description == "builtin" || c.description.find("directory") != std::string::npos ||

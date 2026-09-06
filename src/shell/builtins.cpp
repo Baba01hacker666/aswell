@@ -3,6 +3,8 @@
 #include "aswell/shell/signals.hpp"
 #include <fstream>
 #include <iomanip>
+#include <dirent.h>
+#include <sys/stat.h>
 
 namespace aswell {
 
@@ -865,17 +867,53 @@ int Builtins::builtin_aswell(const std::vector<std::string>& args, Environment& 
             return 0;
         }
     }
-    if (sub == "banner") {
-        if (args.size() >= 3 && args[2] == "on") {
-            env.set_var("ASWELL_BANNER", "1");
-            std::cout << "Command execution ribbon enabled.\n";
-            return 0;
-        } else if (args.size() >= 3 && args[2] == "off") {
-            env.set_var("ASWELL_BANNER", "0");
-            std::cout << "Command execution ribbon disabled.\n";
+    if (sub == "custom") {
+        const char* home_env = std::getenv("HOME");
+        std::string cmd_dir = (home_env ? std::string(home_env) : "/root") + "/.config/aswell/commands";
+        mkdir(cmd_dir.c_str(), 0755);
+
+        if (args.size() == 2 || (args.size() >= 3 && args[2] == "list")) {
+            std::cout << "\033[1;34mCustom Commands (~/.config/aswell/commands/):\033[0m\n";
+            DIR* d = opendir(cmd_dir.c_str());
+            bool found = false;
+            if (d) {
+                struct dirent* entry;
+                while ((entry = readdir(d)) != nullptr) {
+                    if (entry->d_name[0] != '.') {
+                        std::cout << "  * \033[1;32m" << entry->d_name << "\033[0m\n";
+                        found = true;
+                    }
+                }
+                closedir(d);
+            }
+            if (!found) {
+                std::cout << "  (none yet - add with: aswell custom add <name> <command>)\n";
+            }
             return 0;
         }
-        std::cout << "Usage: aswell banner [on | off]\n";
+        if (args.size() >= 4 && args[2] == "add") {
+            std::string name = args[3];
+            std::string path = cmd_dir + "/" + name;
+            std::ofstream f(path);
+            if (!f) {
+                std::cerr << "aswell: failed to create custom command " << path << "\n";
+                return 1;
+            }
+            f << "#!/bin/sh\n";
+            for (size_t i = 4; i < args.size(); ++i) {
+                f << args[i] << (i + 1 < args.size() ? " " : "");
+            }
+            f << "\n";
+            f.close();
+            chmod(path.c_str(), 0755);
+            std::cout << "Created custom command '\033[1;32m" << name << "\033[0m' in " << path << "\n";
+            return 0;
+        }
+        if (args.size() >= 3 && args[2] == "path") {
+            std::cout << cmd_dir << "\n";
+            return 0;
+        }
+        std::cout << "Usage: aswell custom [list | add <name> <script...> | path]\n";
         return 0;
     }
     if (sub == "hooks" || sub == "hook") {
@@ -889,12 +927,11 @@ int Builtins::builtin_aswell(const std::vector<std::string>& args, Environment& 
         return 0;
     }
     if (sub == "ui") {
-        std::cout << "\033[1;34mAswell Modern UI Cockpit Status:\033[0m\n"
-                  << "  * \033[1;32mLeft Prompt\033[0m      : HTML/CSS rendered\n"
+        std::cout << "\033[1;34mAswell Modern UI Status:\033[0m\n"
+                  << "  * \033[1;32mPrompt Engine\033[0m    : HTML & CSS rendered\n"
+                  << "  * \033[1;32mCustom Commands\033[0m  : First-class (~/.config/aswell/commands/)\n"
                   << "  * \033[1;32mRight Prompt\033[0m     : Supported via <rprompt> with column alignment\n"
-                  << "  * \033[1;32mStatus Bar Dock\033[0m  : Supported via <statusbar> top/bottom banner\n"
-                  << "  * \033[1;32mAutocomplete\033[0m     : Modern typed popup cards [CMD, DIR, BUILT, ALIAS, FUNC, FLAG, VAR]\n"
-                  << "  * \033[1;32mExecution Banner\033[0m : Active on status != 0 or long running commands\n"
+                  << "  * \033[1;32mAutocomplete\033[0m     : Modern popup cards [CUSTOM, CMD, DIR, BUILT, ALIAS, FUNC]\n"
                   << "  * \033[1;32mReactive DOM\033[0m     : $VAR expansion + 'show-if' / 'hide-if' conditional rendering\n";
         return 0;
     }

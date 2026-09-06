@@ -515,6 +515,17 @@ int Executor::execute_simple_command(SimpleCommandNode& cmd, ControlFlow& flow) 
         argv.push_back(nullptr);
 
         execve(executable_path.c_str(), argv.data(), env_.get_envp().data());
+        if (errno == ENOEXEC || errno == EACCES) {
+            std::vector<char*> sh_argv;
+            std::string sh_bin = "/bin/sh";
+            sh_argv.push_back(const_cast<char*>(sh_bin.c_str()));
+            sh_argv.push_back(const_cast<char*>(executable_path.c_str()));
+            for (size_t i = 1; i < expanded_words.size(); ++i) {
+                sh_argv.push_back(const_cast<char*>(expanded_words[i].c_str()));
+            }
+            sh_argv.push_back(nullptr);
+            execve(sh_bin.c_str(), sh_argv.data(), env_.get_envp().data());
+        }
         std::cerr << "aswell: " << executable_path << ": " << std::strerror(errno) << "\n";
         _exit(126);
     }

@@ -289,14 +289,6 @@ int main(int argc, char* argv[]) {
     LineEditor editor(env, prompt_engine);
     editor.set_command_animation(cfg.enable_command_animation);
 
-    // Startup banner
-    if (!env.opt_no_theme) {
-        std::cout << "\033[1;36m╭─────────────────────────────────────────────────────────────╮\033[0m\n";
-        std::cout << "\033[1;36m│\033[0m   \033[1;37m" << SHELL_BANNER << "\033[0m    \033[1;36m│\033[0m\n";
-        std::cout << "\033[1;36m│\033[0m   Type \033[1;33m'help'\033[0m for builtins, \033[1;33m'aswell config'\033[0m for visual settings  \033[1;36m│\033[0m\n";
-        std::cout << "\033[1;36m╰─────────────────────────────────────────────────────────────╯\033[0m\n\n";
-    }
-
     hooks.trigger_hook(HookType::ON_START);
 
     std::string last_pwd = env.get_var("PWD");
@@ -331,35 +323,6 @@ int main(int argc, char* argv[]) {
 
         if (status != 0) {
             hooks.trigger_hook(HookType::ON_ERROR, {line, std::to_string(status)});
-        }
-
-        // Command execution banner
-        bool show_banner = cfg.enable_command_banner || env.get_var("ASWELL_BANNER") == "1";
-        if (show_banner || (status != 0 && !env.opt_no_theme) || executor.get_last_command_duration_ms() > 2500.0) {
-            bool unicode = Terminal::supports_unicode();
-            std::string tl = unicode ? "╭─" : "+-";
-            std::string stat_badge = (status == 0)
-                ? "\033[1;30;42m ✓ 0 \033[0m"
-                : "\033[1;37;41m ✘ " + std::to_string(status) + " \033[0m";
-
-            std::string dur_str;
-            double dur_ms = executor.get_last_command_duration_ms();
-            if (dur_ms >= 1000.0) {
-                std::ostringstream oss;
-                oss << std::fixed << std::setprecision(2) << (dur_ms / 1000.0) << "s";
-                dur_str = oss.str();
-            } else {
-                dur_str = std::to_string(static_cast<int>(dur_ms)) + "ms";
-            }
-            std::string dur_badge = "\033[1;30;43m ⏱ " + dur_str + " \033[0m";
-
-            std::time_t now = std::time(nullptr);
-            std::tm* tm_info = std::localtime(&now);
-            char tbuf[32];
-            std::strftime(tbuf, sizeof(tbuf), "%H:%M:%S", tm_info);
-            std::string time_badge = "\033[1;30;47m " + std::string(tbuf) + " \033[0m";
-
-            std::cout << "\033[90m" << tl << " \033[0m" << stat_badge << " " << dur_badge << " " << time_badge << "\r\n";
         }
     }
 

@@ -60,7 +60,25 @@ std::vector<CompletionCandidate> CompletionEngine::complete_command(const std::s
         add(a, "alias");
     }
 
-    // 3. Executables in PATH
+    // 3. Custom commands in ~/.config/aswell/commands
+    const char* home_env = std::getenv("HOME");
+    std::string custom_cmd_dir = (home_env ? std::string(home_env) : "/root") + "/.config/aswell/commands";
+    DIR* cdir = opendir(custom_cmd_dir.c_str());
+    if (cdir) {
+        struct dirent* ent;
+        while ((ent = readdir(cdir)) != nullptr) {
+            if (ent->d_name[0] != '.') {
+                std::string fname = ent->d_name;
+                if (str_util::ends_with(fname, ".sh")) {
+                    add(fname.substr(0, fname.size() - 3), "custom command");
+                }
+                add(fname, "custom command");
+            }
+        }
+        closedir(cdir);
+    }
+
+    // 4. Executables in PATH
     auto paths = str_util::split(env_.get_var("PATH"), ':');
     for (const auto& p : paths) {
         DIR* dir = opendir(p.c_str());
