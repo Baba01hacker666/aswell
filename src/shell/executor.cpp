@@ -156,7 +156,8 @@ bool Executor::apply_redirections(const std::vector<Redirection>& redirs, std::v
 
                 int p[2];
                 if (pipe(p) == 0) {
-                    (void)write(p[1], content.data(), content.size());
+                    ssize_t w = write(p[1], content.data(), content.size());
+                    (void)w;
                     close(p[1]);
                     int backup = dup(target_fd);
                     if (backup >= 0) {
@@ -172,7 +173,8 @@ bool Executor::apply_redirections(const std::vector<Redirection>& redirs, std::v
                 std::string content = expansion_.expand_word_single(redir.target) + "\n";
                 int p[2];
                 if (pipe(p) == 0) {
-                    (void)write(p[1], content.data(), content.size());
+                    ssize_t w = write(p[1], content.data(), content.size());
+                    (void)w;
                     close(p[1]);
                     int backup = dup(target_fd);
                     if (backup >= 0) {

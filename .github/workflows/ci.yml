@@ -1,0 +1,106 @@
+name: CI / CD & Quality Assurance
+
+on:
+  push:
+    branches: [ master, main ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ master, main ]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint & Code Quality
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Linting Tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck cppcheck
+
+      - name: Lint Shell Scripts (shellcheck)
+        run: |
+          echo "Running shellcheck on shell scripts..."
+          shellcheck -e SC1090,SC1091 tests/run_all_tests.sh plugins/*.sh examples/*.sh
+
+      - name: Static Analysis (cppcheck)
+        run: |
+          echo "Running cppcheck on C++ source files..."
+          cppcheck --enable=warning,style,performance,portability \
+                   --inline-suppr \
+                   --error-exitcode=1 \
+                   --suppress=missingIncludeSystem \
+                   --suppress=unmatchedSuppression \
+                   --suppress=unusedFunction \
+                   --suppress=constParameterReference \
+                   --suppress=useStlAlgorithm \
+                   -I include/ src/
+
+      - name: Strict Compiler Lint (-Wall -Wextra -Werror)
+        run: |
+          make clean
+          make -j$(nproc) CXXFLAGS="-std=c++20 -O2 -Wall -Wextra -Werror -Iinclude"
+
+  test:
+    name: Build & Test (${{ matrix.os }} - ${{ matrix.compiler }})
+    needs: lint
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-latest ]
+        compiler: [ g++, clang++ ]
+        include:
+          - os: macos-latest
+            compiler: clang++
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Linux Dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential
+
+      - name: Compile Aswell Shell
+        run: |
+          make clean
+          make -j4 CXX=${{ matrix.compiler }}
+
+      - name: Run Test Suite
+        run: |
+          ./tests/run_all_tests.sh
+
+      - name: System Installation Test
+        run: |
+          sudo make install
+          which aswell
+          aswell --version
+
+      - name: Functional & POSIX Smoke Tests
+        run: |
+          echo "Testing one-liner execution..."
+          aswell -c 'echo "Hello from CI!"'
+
+          echo "Testing loops and arithmetic..."
+          aswell -c 'for i in 1 2 3; do printf "%d " "$((i * 10))"; done; echo'
+
+          echo "Testing pipeline and redirects..."
+          aswell -c 'printf "alpha\nbeta\ngamma\n" | grep beta'
+
+          echo "Testing subshell isolation..."
+          aswell -c 'FOO=initial; (FOO=modified; echo "Subshell: $FOO"); echo "Parent: $FOO"'
+
+          echo "Testing theme engine..."
+          aswell theme list
+          aswell theme set nord
+          aswell theme set cyberpunk

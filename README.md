@@ -9,6 +9,7 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/Baba01hacker666/aswell/actions"><img src="https://github.com/Baba01hacker666/aswell/actions/workflows/ci.yml/badge.svg" alt="CI / CD" /></a>
   <a href="docs/POSIX_COMPLIANCE.md"><img src="https://img.shields.io/badge/POSIX-Compatible-blue.svg?style=flat-square" alt="POSIX Compatible" /></a>
   <a href="#"><img src="https://img.shields.io/badge/C%2B%2B-20-brightgreen.svg?style=flat-square" alt="C++20" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-purple.svg?style=flat-square" alt="License" /></a>
