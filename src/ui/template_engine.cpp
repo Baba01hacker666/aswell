@@ -238,6 +238,126 @@ std::string TemplateEngine::eval_expr(const std::string& expr_raw, const Templat
 }
 
 // ============================================================================
+// Fire Flame Cellular Simulation Generator
+// ============================================================================
+
+static std::string generate_fire_frame(int frame_idx, int total_frames, const std::string& target_name, int H = 8, int W = 52) {
+    std::vector<std::vector<int>> heat(static_cast<size_t>(H), std::vector<int>(static_cast<size_t>(W), 0));
+
+    bool combustion_active = (frame_idx < 13);
+    double lift = (frame_idx >= 13) ? static_cast<double>(frame_idx - 12) * 1.35 : 0.0;
+    int center_x = W / 2;
+    int flame_half_width = std::min(W / 2 - 2, 20);
+
+    for (int y = 0; y < H; ++y) {
+        int row_from_bottom = (H - 1) - y;
+        double effective_row = static_cast<double>(row_from_bottom) - lift;
+        if (effective_row < -0.5) continue;
+
+        for (int x = 0; x < W; ++x) {
+            int dx = std::abs(x - center_x);
+            if (dx > flame_half_width + 4) continue;
+
+            double wave1 = std::sin(static_cast<double>(x) * 0.45 + static_cast<double>(frame_idx) * 0.85);
+            double wave2 = std::cos(static_cast<double>(x) * 0.9 - static_cast<double>(frame_idx) * 1.1 + static_cast<double>(y) * 0.7);
+            double draft = (wave1 * 26.0) + (wave2 * 20.0);
+
+            double width_factor = 1.0 - (static_cast<double>(dx) / static_cast<double>(flame_half_width + 2));
+            if (width_factor < 0.0) width_factor = 0.0;
+            width_factor = std::pow(width_factor, 1.3);
+
+            double v_heat = 0.0;
+            if (combustion_active) {
+                double max_h = std::min(static_cast<double>(H - 1), 2.0 + static_cast<double>(frame_idx) * 0.75);
+                if (effective_row <= max_h) {
+                    double norm_h = effective_row / (max_h + 0.1);
+                    v_heat = 255.0 * (1.0 - norm_h * 0.82);
+                }
+            } else {
+                double center = 2.0 + lift * 0.75;
+                double dist = std::abs(effective_row - center);
+                double intensity = std::max(0.0, 1.0 - dist / 3.2);
+                double fade = 1.0 - (static_cast<double>(frame_idx - 12) / static_cast<double>(total_frames - 12));
+                v_heat = 240.0 * intensity * fade;
+            }
+
+            int h = static_cast<int>((v_heat + draft) * width_factor);
+            heat[static_cast<size_t>(y)][static_cast<size_t>(x)] = std::clamp(h, 0, 255);
+        }
+    }
+
+    std::ostringstream ss;
+    std::string label = "🔥 INCINERATING: " + (target_name.empty() ? "file" : target_name) + " 🔥";
+    int label_len = static_cast<int>(str_util::visual_width(label));
+    int label_start = std::max(2, (W - label_len) / 2);
+
+    for (int y = 0; y < H; ++y) {
+        std::string line;
+        line.reserve(static_cast<size_t>(W * 16));
+        bool is_bottom = (y == H - 1);
+
+        for (int x = 0; x < W; ++x) {
+            if (is_bottom && combustion_active && x >= label_start && x < label_start + label_len) {
+                size_t char_pos = static_cast<size_t>(x - label_start);
+                char ch = (char_pos < label.size()) ? label[char_pos] : ' ';
+                if (frame_idx <= 4) {
+                    line += "\033[1;38;2;255;255;160m";
+                    line += ch;
+                    line += "\033[0m";
+                } else if (frame_idx <= 8) {
+                    line += "\033[1;38;2;255;130;10m";
+                    line += ch;
+                    line += "\033[0m";
+                } else {
+                    static const char ash[] = "░▒*▲.";
+                    line += "\033[38;2;190;40;10m";
+                    line += ash[(static_cast<size_t>(x + frame_idx)) % 5];
+                    line += "\033[0m";
+                }
+                continue;
+            }
+
+            int h = heat[static_cast<size_t>(y)][static_cast<size_t>(x)];
+            if (h >= 210) {
+                static const char glyphs[] = "█▓▲";
+                line += "\033[1;38;2;255;250;130m";
+                line += glyphs[(static_cast<size_t>(x * 3 + frame_idx)) % 3];
+                line += "\033[0m";
+            } else if (h >= 150) {
+                static const char glyphs[] = "█▓▒▲";
+                line += "\033[38;2;255;130;10m";
+                line += glyphs[(static_cast<size_t>(x * 2 + frame_idx)) % 4];
+                line += "\033[0m";
+            } else if (h >= 95) {
+                static const char glyphs[] = "▓▒░*";
+                line += "\033[38;2;225;50;10m";
+                line += glyphs[(static_cast<size_t>(x + frame_idx)) % 4];
+                line += "\033[0m";
+            } else if (h >= 50) {
+                static const char glyphs[] = "▒░*^";
+                line += "\033[38;2;160;25;10m";
+                line += glyphs[(static_cast<size_t>(x + y + frame_idx)) % 4];
+                line += "\033[0m";
+            } else if (h >= 20) {
+                static const char glyphs[] = "░·*.";
+                line += "\033[38;2;110;25;20m";
+                line += glyphs[(static_cast<size_t>(x * 5 + frame_idx)) % 4];
+                line += "\033[0m";
+            } else if (h >= 8) {
+                line += "\033[38;2;70;65;65m";
+                line += (frame_idx % 2 == 0) ? "·" : ".";
+                line += "\033[0m";
+            } else {
+                line += " ";
+            }
+        }
+        ss << line << "\r\n";
+    }
+
+    return ss.str();
+}
+
+// ============================================================================
 // Template Parser & Evaluator
 // ============================================================================
 
@@ -266,15 +386,13 @@ private:
     static void parse_children(std::string_view s, size_t& p, std::shared_ptr<TemplateNode> parent) {
         while (p < s.size()) {
             if (s[p] == '<') {
-                // Check comment
                 if (s.substr(p, 4) == "<!--") {
                     size_t end = s.find("-->", p);
                     p = (end == std::string_view::npos) ? s.size() : end + 3;
                     continue;
                 }
-                // Check closing tag
                 if (p + 1 < s.size() && s[p + 1] == '/') {
-                    break; // parent will close
+                    break;
                 }
                 auto child = parse_tag(s, p);
                 if (child) {
@@ -307,7 +425,6 @@ private:
         auto node = std::make_shared<TemplateNode>();
         node->tag = tag;
 
-        // Parse attributes
         bool self_closing = false;
         while (p < s.size()) {
             skip_ws(s, p);
@@ -320,7 +437,6 @@ private:
                 p++;
                 break;
             }
-            // Attribute name
             size_t k_start = p;
             while (p < s.size() && !std::isspace(static_cast<unsigned char>(s[p])) && s[p] != '=' && s[p] != '>' && s[p] != '/') {
                 p++;
@@ -336,7 +452,7 @@ private:
                     size_t v_start = p;
                     while (p < s.size() && s[p] != quote) p++;
                     val = std::string(s.substr(v_start, p - v_start));
-                    if (p < s.size()) p++; // eat quote
+                    if (p < s.size()) p++;
                 }
             }
             if (!key.empty()) {
@@ -346,7 +462,6 @@ private:
 
         if (!self_closing) {
             parse_children(s, p, node);
-            // Eat closing tag </tag>
             if (s.substr(p, 2) == "</") {
                 size_t close_end = s.find('>', p);
                 p = (close_end == std::string_view::npos) ? s.size() : close_end + 1;
@@ -391,6 +506,15 @@ static std::string eval_node(const std::shared_ptr<TemplateNode>& node, Template
         return out;
     }
 
+    if (node->tag == "fire-effect") {
+        std::string target = node->attrs.count("target") ? interpolate_text(node->attrs.at("target"), ctx) : ctx.get("target", "file");
+        int H = node->attrs.count("height") ? static_cast<int>(TemplateEngine::eval_math(node->attrs.at("height"), ctx)) : 8;
+        int W = node->attrs.count("width") ? static_cast<int>(TemplateEngine::eval_math(node->attrs.at("width"), ctx)) : 52;
+        int f = ctx.has("f") ? static_cast<int>(ctx.get_num("f")) : 0;
+        int tot = ctx.has("total_frames") ? static_cast<int>(ctx.get_num("total_frames")) : 19;
+        return generate_fire_frame(f, tot, target, H, W);
+    }
+
     if (node->tag == "let" || node->tag == "set") {
         for (const auto& [k, v] : node->attrs) {
             if (k == "var" && node->attrs.count("val")) {
@@ -418,7 +542,6 @@ static std::string eval_node(const std::shared_ptr<TemplateNode>& node, Template
             }
             return out;
         } else {
-            // Check elif / else
             for (size_t i = 0; i < node->children.size(); ++i) {
                 const auto& ch = node->children[i];
                 if (ch->tag == "elif") {
@@ -459,22 +582,9 @@ static std::string eval_node(const std::shared_ptr<TemplateNode>& node, Template
         return out;
     }
 
-    if (node->tag == "repeat") {
-        std::string var = node->attrs.count("var") ? node->attrs.at("var") : "idx";
-        int count = node->attrs.count("count") ? static_cast<int>(TemplateEngine::eval_math(node->attrs.at("count"), ctx)) : 1;
-        std::string out;
-        for (int i = 0; i < count; ++i) {
-            ctx.set_num(var, i);
-            for (const auto& child : node->children) {
-                out += eval_node(child, ctx);
-            }
-        }
-        return out;
-    }
-
     if (node->tag == "grid") {
         int rows = node->attrs.count("rows") ? static_cast<int>(TemplateEngine::eval_math(node->attrs.at("rows"), ctx)) : 8;
-        int cols = node->attrs.count("cols") ? static_cast<int>(TemplateEngine::eval_math(node->attrs.at("cols"), ctx)) : 54;
+        int cols = node->attrs.count("cols") ? static_cast<int>(TemplateEngine::eval_math(node->attrs.at("cols"), ctx)) : 52;
         std::string r_var = node->attrs.count("row_var") ? node->attrs.at("row_var") : "y";
         std::string c_var = node->attrs.count("col_var") ? node->attrs.at("col_var") : "x";
 
@@ -484,6 +594,7 @@ static std::string eval_node(const std::shared_ptr<TemplateNode>& node, Template
             for (int x = 0; x < cols; ++x) {
                 ctx.set_num(c_var, x);
                 for (const auto& child : node->children) {
+                    if (child->tag == "_text" && str_util::trim(child->text).empty()) continue;
                     out += eval_node(child, ctx);
                 }
             }
@@ -528,17 +639,6 @@ static std::string eval_node(const std::shared_ptr<TemplateNode>& node, Template
         return inner;
     }
 
-    if (node->tag == "cursor") {
-        std::string act = node->attrs.count("action") ? node->attrs.at("action") : "";
-        int cnt = node->attrs.count("count") ? static_cast<int>(TemplateEngine::eval_math(node->attrs.at("count"), ctx)) : 1;
-        if (act == "up") return "\033[" + std::to_string(cnt) + "A\r";
-        if (act == "down") return "\033[" + std::to_string(cnt) + "B\r";
-        if (act == "clear_line") return "\033[2K\r";
-        if (act == "hide") return "\033[?25l";
-        if (act == "show") return "\033[?25h";
-        return "";
-    }
-
     if (node->tag == "badge") {
         std::string inner;
         for (const auto& child : node->children) {
@@ -547,7 +647,6 @@ static std::string eval_node(const std::shared_ptr<TemplateNode>& node, Template
         return inner + "\r\n";
     }
 
-    // Default: evaluate children
     std::string out;
     for (const auto& child : node->children) {
         out += eval_node(child, ctx);
@@ -571,27 +670,26 @@ std::string TemplateEngine::render_file(const std::string& file_path, TemplateCo
 void TemplateEngine::play_animation(const std::string& template_str, TemplateContext& ctx, bool force_headless) {
     auto root = TemplateParser::parse(template_str);
 
-    // Find <animation> node
     std::shared_ptr<TemplateNode> anim_node = nullptr;
     std::function<void(std::shared_ptr<TemplateNode>)> find_anim = [&](std::shared_ptr<TemplateNode> n) {
-        if (!n) return;
+        if (!n || anim_node) return;
         if (n->tag == "animation") {
             anim_node = n;
             return;
         }
         for (const auto& ch : n->children) {
             find_anim(ch);
-            if (anim_node) return;
         }
     };
     find_anim(root);
 
     if (!anim_node) {
         std::cout << render(template_str, ctx);
+        std::cout.flush();
         return;
     }
 
-    int frames = anim_node->attrs.count("frames") ? static_cast<int>(eval_math(anim_node->attrs.at("frames"), ctx)) : 20;
+    int frames = anim_node->attrs.count("frames") ? static_cast<int>(eval_math(anim_node->attrs.at("frames"), ctx)) : 19;
     int height = anim_node->attrs.count("height") ? static_cast<int>(eval_math(anim_node->attrs.at("height"), ctx)) : 8;
     int delay_ms = 35;
     if (anim_node->attrs.count("delay")) {
@@ -601,45 +699,64 @@ void TemplateEngine::play_animation(const std::string& template_str, TemplateCon
     }
     bool clear = (anim_node->attrs.count("clear") && anim_node->attrs.at("clear") == "true");
 
+    // Find the actual frame node or inner elements inside animation
+    std::shared_ptr<TemplateNode> frame_node = nullptr;
+    for (const auto& ch : anim_node->children) {
+        if (ch->tag == "frame" || ch->tag == "grid" || ch->tag == "fire-effect") {
+            frame_node = ch;
+            break;
+        }
+    }
+    if (!frame_node) frame_node = anim_node;
+
     bool interactive = Terminal::is_interactive_tty() && !force_headless;
 
     if (!interactive) {
-        // Headless / CI verification mode: render 3 representative keyframes
-        std::cout << "\033[1;33m[Template Animation Engine — Headless Keyframes]\033[0m\n";
+        // Headless / non-tty mode: render keyframes cleanly
+        std::cout << "\033[1;33m[Template Animation Engine — Headless Simulation]\033[0m\n";
         int keyframes[] = { 0, frames / 2, frames - 1 };
         for (int kf : keyframes) {
             ctx.set_num("f", kf);
             ctx.set_num("frame", kf);
             ctx.set_num("total_frames", frames);
             std::cout << "--- Frame " << kf << " / " << frames << " ---\n";
-            std::cout << eval_node(anim_node, ctx);
+            std::cout << eval_node(frame_node, ctx);
         }
-        // Render badges or following content
-        std::cout << render(template_str, ctx);
+        for (const auto& ch : root->children) {
+            if (ch->tag != "animation") {
+                std::cout << eval_node(ch, ctx);
+            }
+        }
+        std::cout.flush();
         return;
     }
 
     Terminal::hide_cursor();
 
-    // Allocate space
-    for (int i = 0; i < height; ++i) {
-        std::cout << "\r\n";
-    }
+    // Render frame 0
+    ctx.set_num("f", 0);
+    ctx.set_num("frame", 0);
+    ctx.set_num("total_frames", frames);
+    std::string f0 = eval_node(frame_node, ctx);
+    std::cout << f0;
     std::cout.flush();
+    std::this_thread::sleep_for(std::chrono::milliseconds(delay_ms));
 
-    for (int f = 0; f < frames; ++f) {
+    // Subsequent frames: move up exactly height lines, overwrite
+    for (int f = 1; f < frames; ++f) {
         std::cout << "\033[" << height << "A\r";
         ctx.set_num("f", f);
         ctx.set_num("frame", f);
         ctx.set_num("total_frames", frames);
 
-        std::string frame_output = eval_node(anim_node, ctx);
+        std::string frame_output = eval_node(frame_node, ctx);
         std::cout << frame_output;
         std::cout.flush();
 
         std::this_thread::sleep_for(std::chrono::milliseconds(delay_ms));
     }
 
+    // Clean up animation rows
     if (clear) {
         std::cout << "\033[" << height << "A\r";
         for (int i = 0; i < height; ++i) {
@@ -674,78 +791,31 @@ void TemplateEngine::ensure_default_templates() {
 
     // 1. ~/.config/aswell/templates/events.html
     std::string events_file = tdir + "/events.html";
-    std::ifstream check_events(events_file);
-    if (!check_events) {
-        std::ofstream f(events_file);
-        f << R"TMPL(<!-- ~/.config/aswell/templates/events.html -->
+    std::ofstream f(events_file);
+    f << R"TM(<!-- ~/.config/aswell/templates/events.html -->
 <!-- Declarative Event Effects for Aswell Shell -->
 <events>
   <!-- File Deletion Event: Fire burning and moving upwards from command line -->
   <event on="rm">
-    <animation frames="19" delay="35ms" height="8" width="54" clear="true">
-      <frame var="f">
-        <grid rows="8" cols="54" row_var="y" col_var="x">
-          <!-- Procedural TrueColor heat formula computed directly in template -->
-          <let heat="clamp(round((if(f < 13, 245.0 * (1.0 - (7 - y) / 7.5), 230.0 * (1.0 - (f - 12) / 7.0) * max(0.0, 1.0 - abs((7 - y) - (f - 12) * 1.3) / 3.0))) + sin(x * 0.45 + f * 0.85) * 25.0 + cos(x * 0.9 - f * 1.1 + y * 0.7) * 20.0), 0, 255)" />
-          <if condition="heat >= 210">
-            <color fg="#ffff88" bold="true">█</color>
-          <elif condition="heat >= 150">
-            <color fg="#ff8800">▓</color>
-          <elif condition="heat >= 95">
-            <color fg="#dd3300">▒</color>
-          <elif condition="heat >= 50">
-            <color fg="#991500">░</color>
-          <elif condition="heat >= 20">
-            <color fg="#661005">·</color>
-          <elif condition="heat >= 8">
-            <color fg="#444444">.</color>
-          <else>
-            <text> </text>
-          </else>
-          </if>
-        </grid>
-      </frame>
+    <animation frames="19" delay="35ms" height="8" clear="true">
+      <fire-effect target="{{ target }}" height="8" width="52" />
     </animation>
     <badge>🔥 <color fg="#ff3333" bold="true">[INCINERATED]</color> <color fg="#ffaa00" bold="true">{{ target }}</color> <color fg="#777777">— burned into smoke & ash</color> 🔥</badge>
   </event>
 </events>
-)TMPL";
-    }
+)TM";
 
     // 2. ~/.config/aswell/templates/fire.html (standalone fire effect template)
     std::string fire_file = tdir + "/fire.html";
-    std::ifstream check_fire(fire_file);
-    if (!check_fire) {
-        std::ofstream f(fire_file);
-        f << R"TMPL(<!-- Standalone Fire Incineration Template -->
+    std::ofstream ff(fire_file);
+    ff << R"TM(<!-- Standalone Fire Incineration Template -->
 <template name="fire_incinerate">
-  <animation frames="19" delay="35ms" height="8" width="54" clear="true">
-    <frame var="f">
-      <grid rows="8" cols="54" row_var="y" col_var="x">
-        <let heat="clamp(round((if(f < 13, 245.0 * (1.0 - (7 - y) / 7.5), 230.0 * (1.0 - (f - 12) / 7.0) * max(0.0, 1.0 - abs((7 - y) - (f - 12) * 1.3) / 3.0))) + sin(x * 0.45 + f * 0.85) * 25.0 + cos(x * 0.9 - f * 1.1 + y * 0.7) * 20.0), 0, 255)" />
-        <if condition="heat >= 210">
-          <color fg="#ffff88" bold="true">█</color>
-        <elif condition="heat >= 150">
-          <color fg="#ff8800">▓</color>
-        <elif condition="heat >= 95">
-          <color fg="#dd3300">▒</color>
-        <elif condition="heat >= 50">
-          <color fg="#991500">░</color>
-        <elif condition="heat >= 20">
-          <color fg="#661005">·</color>
-        <elif condition="heat >= 8">
-          <color fg="#444444">.</color>
-        <else>
-          <text> </text>
-        </else>
-        </if>
-      </grid>
-    </frame>
+  <animation frames="19" delay="35ms" height="8" clear="true">
+    <fire-effect target="{{ target }}" height="8" width="52" />
   </animation>
   <badge>🔥 <color fg="#ff3333" bold="true">[INCINERATED]</color> <color fg="#ffaa00" bold="true">{{ target }}</color> <color fg="#777777">— burned into smoke & ash</color> 🔥</badge>
 </template>
-)TMPL";
-    }
+)TM";
 }
 
 bool TemplateEngine::handle_event(const std::string& cmd_line, bool is_interactive) {
@@ -761,7 +831,6 @@ bool TemplateEngine::handle_event(const std::string& cmd_line, bool is_interacti
     size_t last_slash = cmd.find_last_of('/');
     if (last_slash != std::string::npos) cmd = cmd.substr(last_slash + 1);
 
-    // Check if it matches an event type
     std::string event_type;
     std::string target;
     if (cmd == "rm" || cmd == "rmdir" || cmd == "unlink" || cmd == "shred") {
@@ -788,14 +857,19 @@ bool TemplateEngine::handle_event(const std::string& cmd_line, bool is_interacti
     std::string content = ss.str();
 
     auto root = TemplateParser::parse(content);
-    // Find <event on="rm">
+    // Recursively find <event on="rm"> anywhere in the document
     std::shared_ptr<TemplateNode> event_node = nullptr;
-    for (const auto& ch : root->children) {
-        if (ch->tag == "event" && ch->attrs.count("on") && ch->attrs.at("on") == event_type) {
-            event_node = ch;
-            break;
+    std::function<void(std::shared_ptr<TemplateNode>)> find_event = [&](std::shared_ptr<TemplateNode> n) {
+        if (!n || event_node) return;
+        if (n->tag == "event" && n->attrs.count("on") && n->attrs.at("on") == event_type) {
+            event_node = n;
+            return;
         }
-    }
+        for (const auto& ch : n->children) {
+            find_event(ch);
+        }
+    };
+    find_event(root);
 
     if (!event_node) return false;
 
