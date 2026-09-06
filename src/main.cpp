@@ -13,6 +13,7 @@
 #include "aswell/plugin/plugin.hpp"
 #include "aswell/ui/demo.hpp"
 #include <fstream>
+#include <dirent.h>
 
 using namespace aswell;
 
@@ -91,6 +92,25 @@ int main(int argc, char* argv[]) {
                 for (const auto& name : ThemeManager::get_builtin_theme_names()) {
                     auto info = ThemeManager::get_theme(name);
                     std::cout << "  * \033[1;36m" << std::left << std::setw(12) << name << "\033[0m - " << info.description << "\n";
+                }
+
+                std::string themes_dir = ConfigManager::get_config_dir() + "/themes";
+                DIR* d = opendir(themes_dir.c_str());
+                if (d) {
+                    struct dirent* entry;
+                    bool header_printed = false;
+                    while ((entry = readdir(d)) != nullptr) {
+                        std::string fname = entry->d_name;
+                        if (str_util::ends_with(fname, ".css")) {
+                            if (!header_printed) {
+                                std::cout << "\n\033[1;35mCustom User Themes (~/.config/aswell/themes/):\033[0m\n";
+                                header_printed = true;
+                            }
+                            std::string th_name = fname.substr(0, fname.size() - 4);
+                            std::cout << "  * \033[1;32m" << std::left << std::setw(12) << th_name << "\033[0m - Custom user stylesheet\n";
+                        }
+                    }
+                    closedir(d);
                 }
                 return 0;
             } else if (std::string(argv[i + 1]) == "set" && i + 2 < argc) {
@@ -187,9 +207,28 @@ int main(int argc, char* argv[]) {
     // Setup prompt engine
     PromptEngine prompt_engine(env);
     if (!env.opt_no_theme) {
-        ThemeInfo tinfo = ThemeManager::get_theme(cfg.theme_name);
-        prompt_engine.set_theme_css(tinfo.css_content);
-        prompt_engine.set_template_html(ConfigManager::build_template(cfg));
+        // 1. Custom CSS theme check (~/.config/aswell/theme.css or ~/.config/aswell/themes/<name>.css)
+        std::string custom_css_path = ConfigManager::get_config_dir() + "/theme.css";
+        std::ifstream css_f(custom_css_path);
+        if (css_f) {
+            std::stringstream ss;
+            ss << css_f.rdbuf();
+            prompt_engine.set_theme_css(ss.str());
+        } else {
+            ThemeInfo tinfo = ThemeManager::get_custom_theme(ConfigManager::get_config_dir() + "/themes", cfg.theme_name);
+            prompt_engine.set_theme_css(tinfo.css_content);
+        }
+
+        // 2. Custom prompt HTML template check (~/.config/aswell/prompt.html)
+        std::string custom_html_path = ConfigManager::get_config_dir() + "/prompt.html";
+        std::ifstream html_f(custom_html_path);
+        if (html_f) {
+            std::stringstream ss;
+            ss << html_f.rdbuf();
+            prompt_engine.set_template_html(ss.str());
+        } else {
+            prompt_engine.set_template_html(ConfigManager::build_template(cfg));
+        }
     } else {
         // Plain prompt
         prompt_engine.set_template_html("<prompt><text>aswell $ </text></prompt>");
