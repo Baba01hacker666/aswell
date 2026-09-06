@@ -271,7 +271,8 @@ std::optional<std::string> LineEditor::read_line(double last_duration_ms, size_t
                     }
                 }
             } else if (ev.key == Key::ENTER) {
-                std::cout << "\n";
+                std::cout << "\r\n";
+                std::cout.flush();
                 if (!buffer_.empty()) history_.add(buffer_);
                 return buffer_;
             }
@@ -389,14 +390,16 @@ std::optional<std::string> LineEditor::read_line(double last_duration_ms, size_t
                 break;
 
             case Key::CTRL_C:
-                std::cout << "^C\n";
+                std::cout << "^C\r\n";
+                std::cout.flush();
                 buffer_.clear();
                 cursor_pos_ = 0;
                 return "";
 
             case Key::CTRL_D:
                 if (buffer_.empty()) {
-                    std::cout << "exit\n";
+                    std::cout << "exit\r\n";
+                    std::cout.flush();
                     return std::nullopt; // EOF
                 } else if (cursor_pos_ < buffer_.size()) {
                     buffer_.erase(cursor_pos_, 1);
@@ -471,14 +474,16 @@ std::optional<std::string> LineEditor::read_line(double last_duration_ms, size_t
 
                 if (!is_command_complete(full_accumulated_input)) {
                     // Continue multiline reading
-                    std::cout << "\n";
+                    std::cout << "\r\n";
+                    std::cout.flush();
                     buffer_.clear();
                     cursor_pos_ = 0;
                     prompt_engine_.set_template_html("<prompt><text class=\"bracket\">>  </text></prompt>");
                     continue;
                 }
 
-                std::cout << "\n";
+                std::cout << "\r\n";
+                std::cout.flush();
                 if (!full_accumulated_input.empty()) {
                     history_.add(full_accumulated_input);
                 }

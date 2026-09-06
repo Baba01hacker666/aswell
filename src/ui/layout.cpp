@@ -6,6 +6,7 @@ namespace aswell {
 std::shared_ptr<LayoutNode> LayoutEngine::build_node(std::shared_ptr<UIElement> elem,
                                                      uint64_t timestamp_ms) {
     if (!elem) return nullptr;
+    if (elem->computed_style.display == DisplayType::NONE) return nullptr;
 
     auto node = std::make_shared<LayoutNode>();
     node->element = elem;

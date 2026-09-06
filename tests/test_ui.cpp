@@ -4,6 +4,8 @@
 #include "aswell/ui/layout.hpp"
 #include "aswell/ui/render.hpp"
 #include "aswell/ui/color.hpp"
+#include "aswell/ui/prompt.hpp"
+#include "aswell/shell/environment.hpp"
 
 using namespace aswell;
 
@@ -31,10 +33,22 @@ void test_color_and_visual_width() {
     std::cout << "[PASS] test_color_and_visual_width\n";
 }
 
+void test_prompt_render() {
+    Environment env;
+    env.set_var("USER", "testuser");
+    env.set_var("PWD", "/home/testuser");
+    PromptEngine pe(env);
+    auto ctx = pe.gather_context(0, 0, false);
+    RenderResult res = pe.render(ctx, 0);
+    assert(!res.ansi_output.empty());
+    std::cout << "[PASS] test_prompt_render\n";
+}
+
 int main() {
     std::cout << "--- Running UI & Layout Tests ---\n";
     test_dom_parsing();
     test_color_and_visual_width();
+    test_prompt_render();
     std::cout << "All UI Tests Passed!\n";
     return 0;
 }

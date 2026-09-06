@@ -34,6 +34,7 @@ void TerminalRenderer::render_recursive(std::shared_ptr<LayoutNode> node,
                                         bool truecolor,
                                         bool unicode) {
     if (!node) return;
+    if (node->element && node->element->computed_style.display == DisplayType::NONE) return;
 
     if (node->is_newline) {
         out += "\033[0m\n";

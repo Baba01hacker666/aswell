@@ -137,7 +137,9 @@ std::shared_ptr<UIElement> DOMParser::parse_element(std::string_view html, size_
     std::string closing_tag = "</" + tag_name + ">";
 
     while (pos < html.size()) {
-        skip_ws(html, pos);
+        if (elem->tag != "text") {
+            skip_ws(html, pos);
+        }
         if (pos >= html.size()) break;
 
         // Check if closing tag
@@ -169,12 +171,16 @@ std::shared_ptr<UIElement> DOMParser::parse_element(std::string_view html, size_
                 text = std::string(html.substr(pos, next_lt - pos));
                 pos = next_lt;
             }
-            std::string trimmed = str_util::trim(text);
-            if (!trimmed.empty()) {
-                if (elem->text_content.empty()) {
-                    elem->text_content = trimmed;
-                } else {
-                    elem->text_content += " " + trimmed;
+            if (elem->tag == "text") {
+                elem->text_content += text;
+            } else {
+                std::string trimmed = str_util::trim(text);
+                if (!trimmed.empty()) {
+                    if (elem->text_content.empty()) {
+                        elem->text_content = trimmed;
+                    } else {
+                        elem->text_content += " " + trimmed;
+                    }
                 }
             }
         }

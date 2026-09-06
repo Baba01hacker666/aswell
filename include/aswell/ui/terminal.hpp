@@ -86,7 +86,10 @@ private:
 class RawModeGuard {
 public:
     RawModeGuard() { Terminal::enable_raw_mode(); }
-    ~RawModeGuard() { Terminal::disable_raw_mode(); }
+    ~RawModeGuard() {
+        std::cout.flush();
+        Terminal::disable_raw_mode();
+    }
 };
 
 } // namespace aswell

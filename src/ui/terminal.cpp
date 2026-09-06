@@ -53,7 +53,7 @@ void Terminal::enable_raw_mode() {
     if (tcgetattr(STDIN_FILENO, &orig_termios_) == 0) {
         struct termios raw = orig_termios_;
         raw.c_iflag &= ~(BRKINT | ICRNL | INPCK | ISTRIP | IXON);
-        raw.c_oflag &= ~(OPOST);
+        // Retain OPOST to keep ONLCR enabled: newlines automatically return carriage to column 0
         raw.c_cflag |= (CS8);
         raw.c_lflag &= ~(ECHO | ICANON | IEXTEN | ISIG);
         raw.c_cc[VMIN] = 1;
