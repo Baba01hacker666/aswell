@@ -5,6 +5,8 @@
 #include <iomanip>
 #include <dirent.h>
 #include <sys/stat.h>
+#include "aswell/ui/template_engine.hpp"
+#include "aswell/ui/terminal.hpp"
 
 namespace aswell {
 
@@ -924,6 +926,96 @@ int Builtins::builtin_aswell(const std::vector<std::string>& args, Environment& 
                   << "  * \033[1;36maswell_on_error\033[0m      - Triggered on non-zero exit with $1=cmd, $2=status\n"
                   << "  * \033[1;36maswell_on_dir_change\033[0m - Triggered on cd/dir change with $1=new_dir\n"
                   << "  * \033[1;36maswell_on_exit\033[0m       - Triggered when shell exits\n";
+        return 0;
+    }
+    if (sub == "template" || sub == "tmpl") {
+        TemplateEngine::ensure_default_templates();
+        std::string tdir = TemplateEngine::get_templates_dir();
+
+        if (args.size() == 2 || (args.size() >= 3 && args[2] == "list")) {
+            std::cout << "\033[1;34mAswell Templates Directory (~/.config/aswell/templates/):\033[0m\n";
+            DIR* d = opendir(tdir.c_str());
+            if (d) {
+                struct dirent* ent;
+                while ((ent = readdir(d)) != nullptr) {
+                    if (ent->d_name[0] != '.') {
+                        std::cout << "  * \033[1;32m" << ent->d_name << "\033[0m\n";
+                    }
+                }
+                closedir(d);
+            }
+            std::cout << "Run: aswell template render <file> [var=val...]\n"
+                      << "     aswell template eval '<markup>'\n";
+            return 0;
+        }
+        if (args.size() >= 4 && args[2] == "eval") {
+            TemplateContext ctx;
+            for (size_t i = 4; i < args.size(); ++i) {
+                size_t eq = args[i].find('=');
+                if (eq != std::string::npos) {
+                    ctx.set(args[i].substr(0, eq), args[i].substr(eq + 1));
+                }
+            }
+            std::cout << TemplateEngine::render(args[3], ctx) << "\n";
+            return 0;
+        }
+        if (args.size() >= 4 && args[2] == "render") {
+            std::string path = args[3];
+            if (path.find('/') == std::string::npos) {
+                path = tdir + "/" + path;
+            }
+            TemplateContext ctx;
+            for (size_t i = 4; i < args.size(); ++i) {
+                size_t eq = args[i].find('=');
+                if (eq != std::string::npos) {
+                    ctx.set(args[i].substr(0, eq), args[i].substr(eq + 1));
+                }
+            }
+            std::cout << TemplateEngine::render_file(path, ctx) << "\n";
+            return 0;
+        }
+        if (args.size() >= 3 && (args[2] == "fire" || args[2] == "test")) {
+            std::string target = (args.size() >= 4) ? args[3] : "sample.txt";
+            TemplateContext ctx;
+            ctx.set("target", target);
+            std::string fire_file = tdir + "/fire.html";
+            std::ifstream f(fire_file);
+            std::string tmpl_src = f ? std::string((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>()) : "";
+            bool headless = !Terminal::is_interactive_tty();
+            TemplateEngine::play_animation(tmpl_src, ctx, headless);
+            return 0;
+        }
+        std::cout << "Usage: aswell template [list | eval <markup> | render <file> | fire [target]]\n";
+        return 0;
+    }
+    if (sub == "event" || sub == "events" || sub == "fire") {
+        TemplateEngine::ensure_default_templates();
+        std::string tdir = TemplateEngine::get_templates_dir();
+        if (sub == "fire" || (args.size() >= 3 && args[2] == "fire")) {
+            std::string target = (sub == "fire" && args.size() >= 3) ? args[2] : ((args.size() >= 4) ? args[3] : "sample_file.txt");
+            TemplateContext ctx;
+            ctx.set("target", target);
+            std::string fire_file = tdir + "/fire.html";
+            std::ifstream f(fire_file);
+            std::string tmpl_src = f ? std::string((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>()) : "";
+            bool headless = (args.size() >= 4 && args.back() == "--headless") || !Terminal::is_interactive_tty();
+            TemplateEngine::play_animation(tmpl_src, ctx, headless);
+            return 0;
+        }
+        if (args.size() >= 3 && args[2] == "test") {
+            TemplateContext ctx;
+            ctx.set("target", "test_artifact.log");
+            std::string fire_file = tdir + "/fire.html";
+            std::ifstream f(fire_file);
+            std::string tmpl_src = f ? std::string((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>()) : "";
+            TemplateEngine::play_animation(tmpl_src, ctx, true);
+            return 0;
+        }
+        std::cout << "\033[1;34mAswell Declarative Template Event Subsystem:\033[0m\n"
+                  << "  * \033[1;32mEvent Template\033[0m  : ~/.config/aswell/templates/events.html\n"
+                  << "  * \033[1;32mFILE_REMOVE\033[0m     : Triggered on rm / unlink — executed purely via TemplateEngine\n"
+                  << "  * \033[1;32mTest trigger\033[0m    : aswell fire <target>  or  aswell template fire <target>\n"
+                  << "Usage: aswell event [list | fire <target> | test]\n";
         return 0;
     }
     if (sub == "ui") {

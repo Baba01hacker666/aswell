@@ -12,6 +12,7 @@
 #include "aswell/config/config_editor.hpp"
 #include "aswell/plugin/plugin.hpp"
 #include "aswell/ui/demo.hpp"
+#include "aswell/ui/template_engine.hpp"
 #include <fstream>
 #include <dirent.h>
 #include <sys/stat.h>
@@ -318,6 +319,7 @@ int main(int argc, char* argv[]) {
         }
 
         hooks.trigger_hook(HookType::BEFORE_COMMAND, {line});
+        TemplateEngine::handle_event(line, Terminal::is_interactive_tty());
         int status = executor.execute_string(line);
         hooks.trigger_hook(HookType::AFTER_COMMAND, {line, std::to_string(executor.get_last_command_duration_ms()), std::to_string(status)});
 

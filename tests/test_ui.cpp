@@ -6,6 +6,7 @@
 #include "aswell/ui/color.hpp"
 #include "aswell/ui/prompt.hpp"
 #include "aswell/ui/animation.hpp"
+#include "aswell/ui/template_engine.hpp"
 #include "aswell/shell/environment.hpp"
 
 using namespace aswell;
@@ -129,6 +130,42 @@ void test_rprompt_and_statusbar() {
     std::cout << "[PASS] test_rprompt_and_statusbar\n";
 }
 
+void test_template_engine() {
+    TemplateContext ctx;
+    ctx.set("user", "alice");
+    ctx.set("target", "secret_payload.bin");
+    ctx.set_num("x", 10.0);
+    ctx.set_num("y", 3.0);
+
+    // 1. Math evaluation
+    assert(TemplateEngine::eval_math("2 + 3 * 4", ctx) == 14.0);
+    assert(TemplateEngine::eval_math("clamp(350, 0, 255)", ctx) == 255.0);
+    assert(TemplateEngine::eval_math("if(x > 5, 42, 99)", ctx) == 42.0);
+    assert(TemplateEngine::eval_math("sin(0)", ctx) == 0.0);
+
+    // 2. Variable interpolation & filters
+    assert(TemplateEngine::eval_expr("user", ctx) == "alice");
+    assert(TemplateEngine::eval_expr("user | upper", ctx) == "ALICE");
+    assert(TemplateEngine::eval_expr("x + y", ctx) == "13");
+
+    // 3. Markup rendering
+    std::string tmpl = "<if condition=\"x > 5\"><color fg=\"#00ff00\">OK {{ user | upper }}</color><else><text>FAIL</text></else></if>";
+    std::string res = TemplateEngine::render(tmpl, ctx);
+    assert(res.find("OK ALICE") != std::string::npos);
+    assert(res.find("\033[") != std::string::npos); // Has TrueColor ANSI
+
+    // 4. Default template creation & fire template animation
+    TemplateEngine::ensure_default_templates();
+    std::string fire_file = TemplateEngine::get_templates_dir() + "/fire.html";
+    std::string rendered_fire = TemplateEngine::render_file(fire_file, ctx);
+    assert(!rendered_fire.empty());
+
+    // Headless animation execution
+    TemplateEngine::play_animation(rendered_fire, ctx, true);
+
+    std::cout << "[PASS] test_template_engine\n";
+}
+
 int main() {
     std::cout << "--- Running UI & Layout Tests ---\n";
     test_dom_parsing();
@@ -138,6 +175,7 @@ int main() {
     test_reactive_variable_expansion();
     test_conditional_directives();
     test_rprompt_and_statusbar();
+    test_template_engine();
     std::cout << "All UI Tests Passed!\n";
     return 0;
 }

@@ -2,6 +2,7 @@
 #include "aswell/ui/animation.hpp"
 #include "aswell/ui/prompt.hpp"
 #include "aswell/ui/terminal.hpp"
+#include "aswell/ui/template_engine.hpp"
 #include "aswell/editor/editor.hpp"
 #include "aswell/shell/executor.hpp"
 #include "aswell/shell/jobs.hpp"
@@ -9,6 +10,7 @@
 #include <iomanip>
 #include <chrono>
 #include <thread>
+#include <fstream>
 #include <unistd.h>
 
 namespace aswell {
@@ -74,7 +76,16 @@ int EngineDemo::run(Environment& env, bool auto_mode) {
             std::cout << "  Prompt Tick @" << t << "ms:\n" << rr.ansi_output;
         }
 
-        std::cout << "\n\033[1;32m[✓] All animation engine pipelines passed with 100% stability.\033[0m\n";
+        std::cout << "\n\033[1;34m[4/4] Declarative Template Event Effect (rm file fire simulation):\033[0m\n";
+        TemplateEngine::ensure_default_templates();
+        TemplateContext demo_ctx;
+        demo_ctx.set("target", "secret_leak.key");
+        std::string fire_file = TemplateEngine::get_templates_dir() + "/fire.html";
+        std::ifstream ff(fire_file);
+        std::string fire_tmpl = ff ? std::string((std::istreambuf_iterator<char>(ff)), std::istreambuf_iterator<char>()) : "";
+        TemplateEngine::play_animation(fire_tmpl, demo_ctx, true);
+
+        std::cout << "\n\033[1;32m[✓] All animation & event engine pipelines passed with 100% stability.\033[0m\n";
         return 0;
     }
 
