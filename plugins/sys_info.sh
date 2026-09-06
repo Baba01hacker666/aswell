@@ -1,3 +1,5 @@
+#!/bin/sh
+# shellcheck shell=sh
 # Aswell Plugin: sys_info
 # Collects CPU and memory stats
 aswell_sysinfo_hook() {

@@ -1,4 +1,5 @@
 #!/usr/bin/env aswell
+# shellcheck shell=sh
 # Advanced Arithmetic Expressions in Aswell
 
 X=10

@@ -1,4 +1,5 @@
 #!/usr/bin/env aswell
+# shellcheck shell=sh
 # Loops, Conditionals, and Functions in Aswell
 
 count=1

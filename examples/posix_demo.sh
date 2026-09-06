@@ -1,4 +1,5 @@
 #!/usr/bin/env aswell
+# shellcheck shell=sh
 # POSIX Shell Compatibility Demonstration
 
 echo "Starting POSIX compatibility demo in Aswell..."
@@ -21,7 +22,7 @@ echo "Power: $(( 2 ** 8 ))"
 echo "Ternary: $(( A > 10 ? 100 : 0 ))"
 
 # 3. Pipelines & Redirections
-echo "Line 3\nLine 1\nLine 2" | sort | while read -r line; do
+printf "Line 3\nLine 1\nLine 2\n" | sort | while read -r line; do
     echo "Sorted: $line"
 done
 
