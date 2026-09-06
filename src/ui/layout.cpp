@@ -22,6 +22,9 @@ std::shared_ptr<LayoutNode> LayoutEngine::build_node(std::shared_ptr<UIElement> 
     std::string content = elem->text_content;
     if (elem->computed_style.animation.type == AnimationType::SPIN) {
         content = AnimationEngine::evaluate_glyph(elem->computed_style.animation, content, timestamp_ms);
+    } else if (elem->computed_style.animation.type == AnimationType::SCRAMBLE ||
+               elem->computed_style.animation.type == AnimationType::GLITCH) {
+        content = AnimationEngine::evaluate_text(elem->computed_style.animation, content, timestamp_ms);
     }
     node->text = content;
 

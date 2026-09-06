@@ -23,6 +23,7 @@ public:
     static std::string get_minimal_css();
     static std::string get_dracula_css();
     static std::string get_powerline_css();
+    static std::string get_matrix_css();
 };
 
 } // namespace aswell

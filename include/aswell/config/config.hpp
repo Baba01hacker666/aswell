@@ -16,6 +16,7 @@ struct ShellConfig {
     bool show_runtime = true;
     bool show_jobs = true;
     bool show_status = true;
+    bool enable_command_animation = false;
     bool vi_mode = false;
     std::string custom_template_html;
 };

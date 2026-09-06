@@ -4,7 +4,7 @@
 namespace aswell {
 
 std::vector<std::string> ThemeManager::get_builtin_theme_names() {
-    return {"modern", "cyberpunk", "nord", "minimal", "dracula", "powerline"};
+    return {"modern", "cyberpunk", "matrix", "nord", "minimal", "dracula", "powerline"};
 }
 
 std::string ThemeManager::get_default_css() {
@@ -314,11 +314,65 @@ symbol.error {
 )";
 }
 
+std::string ThemeManager::get_matrix_css() {
+    return R"(
+prompt.main {
+    display: block;
+}
+.bracket {
+    color: #00ff66;
+}
+user {
+    color: #00ffaa;
+    font-weight: bold;
+    animation: scramble 40ms infinite;
+}
+.at {
+    color: #008833;
+}
+hostname {
+    color: #00cc55;
+}
+.sep {
+    color: #00ff66;
+}
+directory {
+    color: #50fa7b;
+    font-weight: bold;
+}
+git {
+    color: #55ff99;
+    margin-left: 1;
+}
+git.dirty {
+    color: #ffb86c;
+}
+runtime {
+    color: #00ffaa;
+    margin-left: 1;
+}
+status.error {
+    color: #ff5555;
+    margin-left: 1;
+}
+symbol {
+    color: #00ff66;
+    animation: pulse 1000ms infinite;
+}
+symbol.error {
+    color: #ff5555;
+}
+)";
+}
+
 ThemeInfo ThemeManager::get_theme(const std::string& name) {
     ThemeInfo info;
     info.name = name;
 
-    if (name == "cyberpunk") {
+    if (name == "matrix") {
+        info.description = "Terminal green matrix with high-speed random scrambling username";
+        info.css_content = get_matrix_css();
+    } else if (name == "cyberpunk") {
         info.description = "Neon cyan & magenta cyberpunk aesthetic with fiery accents";
         info.css_content = get_cyberpunk_css();
     } else if (name == "nord") {

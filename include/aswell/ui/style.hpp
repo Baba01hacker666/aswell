@@ -29,7 +29,9 @@ enum class AnimationType {
     RAINBOW,
     FIRE,
     SPIN,
-    WAVE
+    WAVE,
+    SCRAMBLE,
+    GLITCH
 };
 
 struct AnimationConfig {

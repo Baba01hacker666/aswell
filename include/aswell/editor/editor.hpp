@@ -19,6 +19,8 @@ public:
 
     History& history() { return history_; }
     void set_vi_mode(bool vi) { vi_mode_ = vi; }
+    void set_command_animation(bool enable) { command_anim_enabled_ = enable; }
+    bool is_command_animation_enabled() const { return command_anim_enabled_; }
 
 private:
     void refresh_line(const std::string& prompt_ansi, int prompt_visual_width, uint64_t timestamp_ms);
@@ -28,6 +30,7 @@ private:
                               size_t token_start);
 
     bool is_command_complete(const std::string& text) const;
+    std::string render_animated_command(const std::string& buffer, uint64_t timestamp_ms) const;
 
     Environment& env_;
     PromptEngine& prompt_engine_;
@@ -45,6 +48,7 @@ private:
 
     int history_index_ = -1;
     std::string saved_current_buffer_;
+    bool command_anim_enabled_ = false;
 };
 
 } // namespace aswell

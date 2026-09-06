@@ -5,6 +5,7 @@
 #include "aswell/ui/render.hpp"
 #include "aswell/ui/color.hpp"
 #include "aswell/ui/prompt.hpp"
+#include "aswell/ui/animation.hpp"
 #include "aswell/shell/environment.hpp"
 
 using namespace aswell;
@@ -44,11 +45,30 @@ void test_prompt_render() {
     std::cout << "[PASS] test_prompt_render\n";
 }
 
+void test_animation_engine() {
+    AnimationConfig anim;
+    anim.type = AnimationType::SCRAMBLE;
+    anim.duration_ms = 40;
+
+    std::string base = "username";
+    std::string s1 = AnimationEngine::evaluate_text(anim, base, 0);
+    std::string s2 = AnimationEngine::evaluate_text(anim, base, 40);
+    assert(s1.size() == base.size());
+    assert(s2.size() == base.size());
+
+    Color bg1 = AnimationEngine::evaluate_wave_bg(0, 0, 10);
+    Color bg2 = AnimationEngine::evaluate_wave_bg(500, 0, 10);
+    assert(!bg1.is_none && !bg2.is_none);
+
+    std::cout << "[PASS] test_animation_engine\n";
+}
+
 int main() {
     std::cout << "--- Running UI & Layout Tests ---\n";
     test_dom_parsing();
     test_color_and_visual_width();
     test_prompt_render();
+    test_animation_engine();
     std::cout << "All UI Tests Passed!\n";
     return 0;
 }

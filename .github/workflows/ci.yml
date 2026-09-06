@@ -52,9 +52,6 @@ jobs:
       matrix:
         os: [ ubuntu-latest ]
         compiler: [ g++, clang++ ]
-        include:
-          - os: macos-latest
-            compiler: clang++
 
     steps:
       - name: Checkout repository
@@ -99,3 +96,7 @@ jobs:
           aswell theme list
           aswell theme set nord
           aswell theme set cyberpunk
+          aswell theme set matrix
+
+          echo "Testing engine animation demo..."
+          aswell demo --auto

@@ -68,14 +68,53 @@ bool LineEditor::is_command_complete(const std::string& text) const {
     return true;
 }
 
-void LineEditor::refresh_line(const std::string& prompt_ansi, int prompt_visual_width, uint64_t /*timestamp_ms*/) {
+std::string LineEditor::render_animated_command(const std::string& buffer, uint64_t timestamp_ms) const {
+    if (buffer.empty()) return "";
+
+    std::string result;
+    result.reserve(buffer.size() * 24);
+
+    bool in_cmd = true;
+    for (size_t i = 0; i < buffer.size(); ++i) {
+        char c = buffer[i];
+        if (std::isspace(static_cast<unsigned char>(c))) {
+            in_cmd = false;
+        }
+
+        Color bg = AnimationEngine::evaluate_wave_bg(timestamp_ms, i, buffer.size(), 1.2f);
+        result += bg.to_bg_ansi(true);
+
+        // Foreground styling
+        if (in_cmd) {
+            result += "\033[1;96m"; // Bold cyan command
+        } else if (c == '-' || (i > 0 && buffer[i - 1] == '-')) {
+            result += "\033[1;93m"; // Yellow flags
+        } else if (c == '\"' || c == '\'') {
+            result += "\033[1;92m"; // Green quotes
+        } else {
+            result += "\033[1;97m"; // Bright white text
+        }
+
+        result += c;
+        result += "\033[0m";
+    }
+
+    return result;
+}
+
+void LineEditor::refresh_line(const std::string& prompt_ansi, int prompt_visual_width, uint64_t timestamp_ms) {
     // Clear current line only
     std::cout << "\r\033[K";
     std::cout << prompt_ansi;
 
-    // Syntax highlighted buffer
-    std::string hl = highlighter_.highlight(buffer_);
-    std::cout << hl;
+    if (command_anim_enabled_) {
+        std::string anim_cmd = render_animated_command(buffer_, timestamp_ms);
+        std::cout << anim_cmd;
+    } else {
+        // Syntax highlighted buffer
+        std::string hl = highlighter_.highlight(buffer_);
+        std::cout << hl;
+    }
 
     // Autosuggestion in muted gray if at the end of the buffer
     std::string sugg_suffix = suggestions_.get_suggestion_suffix(buffer_);
@@ -182,8 +221,8 @@ std::optional<std::string> LineEditor::read_line(double last_duration_ms, size_t
     vi_insert_mode_ = true;
     vi_mode_ = env_.opt_vi_mode;
 
-    bool has_anim = prompt_engine_.has_active_animations();
-    int timeout_ms = has_anim ? 120 : -1;
+    bool has_anim = prompt_engine_.has_active_animations() || command_anim_enabled_;
+    int timeout_ms = has_anim ? 40 : -1;
 
     // Render initial prompt
     auto initial_ctx = prompt_engine_.gather_context(last_duration_ms, active_jobs, false);

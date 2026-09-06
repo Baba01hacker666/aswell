@@ -36,6 +36,12 @@ symbol {
     assert(prompt_style.border_type == BorderType::ROUNDED || prompt_style.border_type == BorderType::SOLID);
     assert(prompt_style.padding.right == 1);
 
+    std::string css2 = "user { animation: scramble 40ms infinite; }";
+    StyleSheet sheet2 = CSSParser::parse(css2);
+    Style user_style = sheet2.compute_style("user");
+    assert(user_style.animation.type == AnimationType::SCRAMBLE);
+    assert(user_style.animation.duration_ms == 40);
+
     std::cout << "[PASS] test_css_parsing\n";
 }
 

@@ -102,6 +102,12 @@ fi
 echo "[PASS] Parameter pattern replacement"
 
 echo ""
+echo "5. Running Engine Animation & Demo Showcase Tests..."
+./bin/aswell demo --auto
+./bin/demo_engine --auto
+echo "[PASS] Engine animation demo passed"
+
+echo ""
 echo "=================================================="
 echo "       ALL ASWELL TESTS PASSED SUCCESSFULLY!      "
 echo "=================================================="

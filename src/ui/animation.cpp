@@ -1,6 +1,8 @@
 #include "aswell/ui/animation.hpp"
 #include <chrono>
 #include <cmath>
+#include <cctype>
+#include <algorithm>
 
 namespace aswell {
 
@@ -78,6 +80,66 @@ std::string AnimationEngine::evaluate_glyph(const AnimationConfig& anim,
         return frames[frame_idx];
     }
     return default_glyph;
+}
+
+std::string AnimationEngine::evaluate_text(const AnimationConfig& anim,
+                                           const std::string& base_text,
+                                           uint64_t timestamp_ms) {
+    if (base_text.empty()) {
+        return "";
+    }
+
+    if (anim.type == AnimationType::SCRAMBLE || anim.type == AnimationType::GLITCH) {
+        // High speed random scrambling for username / text elements
+        uint64_t step = anim.duration_ms > 0 ? static_cast<uint64_t>(anim.duration_ms) : static_cast<uint64_t>(50);
+        if (step == 0) step = 1;
+
+        uint64_t frame = timestamp_ms / step;
+        std::string result;
+        result.reserve(base_text.size());
+
+        static const char charset[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+        constexpr size_t charset_len = sizeof(charset) - 1;
+
+        for (size_t i = 0; i < base_text.size(); ++i) {
+            char c = base_text[i];
+            if (std::isspace(static_cast<unsigned char>(c))) {
+                result.push_back(c);
+            } else {
+                // High-performance deterministic splitmix hash per character per frame
+                uint64_t h = (frame * 0x9e3779b97f4a7c15ULL) ^ (static_cast<uint64_t>(i) * 0x517cc1b727220a95ULL);
+                h ^= (h >> 30);
+                h *= 0xbf58476d1ce4e5b9ULL;
+                h ^= (h >> 27);
+                result.push_back(charset[h % charset_len]);
+            }
+        }
+        return result;
+    }
+
+    return base_text;
+}
+
+Color AnimationEngine::evaluate_wave_bg(uint64_t timestamp_ms,
+                                        size_t char_idx,
+                                        size_t total_chars,
+                                        float speed) {
+    (void)total_chars;
+    // Flowing cyber gradient wave aura behind command characters
+    double t = static_cast<double>(timestamp_ms) * 0.003 * static_cast<double>(speed);
+    double pos = static_cast<double>(char_idx) * 0.22;
+    double wave1 = 0.5 + 0.5 * std::sin(t - pos);
+    double wave2 = 0.5 + 0.5 * std::cos(t * 0.7 + pos * 0.5);
+
+    double r_val = 18.0 + 50.0 * wave1;
+    double g_val = 24.0 + 20.0 * wave2;
+    double b_val = 38.0 + 54.0 * wave1;
+
+    uint8_t r = static_cast<uint8_t>(std::clamp(r_val, 0.0, 255.0));
+    uint8_t g = static_cast<uint8_t>(std::clamp(g_val, 0.0, 255.0));
+    uint8_t b = static_cast<uint8_t>(std::clamp(b_val, 0.0, 255.0));
+
+    return Color(r, g, b);
 }
 
 } // namespace aswell

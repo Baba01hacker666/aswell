@@ -11,6 +11,7 @@
 #include "aswell/config/theme.hpp"
 #include "aswell/config/config_editor.hpp"
 #include "aswell/plugin/plugin.hpp"
+#include "aswell/ui/demo.hpp"
 #include <fstream>
 
 using namespace aswell;
@@ -30,7 +31,8 @@ static void print_help() {
               << "  --help, -h     Print this help message\n\n"
               << "Subcommands:\n"
               << "  config         Open interactive configuration TUI\n"
-              << "  theme          List or switch themes\n";
+              << "  theme          List or switch themes\n"
+              << "  demo           Run engine animation & UI showcase (--auto for headless)\n";
 }
 
 int main(int argc, char* argv[]) {
@@ -98,6 +100,14 @@ int main(int argc, char* argv[]) {
                 std::cout << "Theme switched to \033[1;32m" << cfg.theme_name << "\033[0m\n";
                 return 0;
             }
+        } else if (arg == "demo" || arg == "--demo") {
+            bool auto_mode = false;
+            for (int j = i + 1; j < argc; ++j) {
+                if (std::string(argv[j]) == "--auto") {
+                    auto_mode = true;
+                }
+            }
+            return EngineDemo::run(env, auto_mode);
         } else if (arg[0] == '-') {
             // Option flag like -e, -u, -x
             for (size_t c = 1; c < arg.size(); ++c) {
@@ -187,6 +197,7 @@ int main(int argc, char* argv[]) {
     }
 
     LineEditor editor(env, prompt_engine);
+    editor.set_command_animation(cfg.enable_command_animation);
 
     // Startup banner
     if (!env.opt_no_theme) {

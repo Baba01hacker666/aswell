@@ -1,0 +1,48 @@
+/* Cyber Scramble Theme - Fast Matrix Random Username & Flowing Accents */
+prompt.main {
+    display: block;
+}
+.bracket {
+    color: #00e5ff;
+    font-weight: bold;
+}
+user {
+    color: #00ff88;
+    font-weight: bold;
+    animation: scramble 40ms infinite;
+}
+.at {
+    color: #008855;
+}
+hostname {
+    color: #00cc55;
+}
+.sep {
+    color: #00e5ff;
+}
+directory {
+    color: #50fa7b;
+    font-weight: bold;
+}
+git {
+    color: #55ff99;
+    margin-left: 1;
+}
+git.dirty {
+    color: #ffb86c;
+}
+runtime {
+    color: #00ffaa;
+    margin-left: 1;
+}
+status.error {
+    color: #ff5555;
+    margin-left: 1;
+}
+symbol {
+    color: #ff007f;
+    animation: pulse 800ms infinite;
+}
+symbol.error {
+    color: #ff5555;
+}

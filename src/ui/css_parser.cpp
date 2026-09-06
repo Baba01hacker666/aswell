@@ -122,6 +122,7 @@ AnimationConfig CSSParser::parse_animation(std::string_view val) {
         else if (p == "fire") cfg.type = AnimationType::FIRE;
         else if (p == "spin") cfg.type = AnimationType::SPIN;
         else if (p == "wave") cfg.type = AnimationType::WAVE;
+        else if (p == "scramble" || p == "glitch" || p == "matrix") cfg.type = AnimationType::SCRAMBLE;
         else if (p == "infinite") cfg.infinite = true;
         else if (str_util::ends_with(p, "ms")) {
             try { cfg.duration_ms = std::stoi(p.substr(0, p.size() - 2)); } catch (...) {}
