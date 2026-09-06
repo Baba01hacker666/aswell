@@ -14,15 +14,26 @@ static void apply_style_ansi(const Style& st,
     if (st.strikethrough) out += "\033[9m";
 
     Color fg = st.color;
-    if (st.animation.type != AnimationType::NONE) {
-        fg = AnimationEngine::evaluate_color(st.animation, fg, timestamp_ms);
+    Color bg = st.bg_color;
+
+    if (st.animation.type != AnimationType::NONE &&
+        st.animation.type != AnimationType::SCRAMBLE &&
+        st.animation.type != AnimationType::GLITCH &&
+        st.animation.type != AnimationType::SPIN) {
+
+        if (!bg.is_none) {
+            bg = AnimationEngine::evaluate_color(st.animation, bg, timestamp_ms);
+        } else if (!fg.is_none) {
+            fg = AnimationEngine::evaluate_color(st.animation, fg, timestamp_ms);
+        }
     }
+
     if (!fg.is_none) {
         out += fg.to_fg_ansi(truecolor);
     }
 
-    if (!st.bg_color.is_none) {
-        out += st.bg_color.to_bg_ansi(truecolor);
+    if (!bg.is_none) {
+        out += bg.to_bg_ansi(truecolor);
     }
 }
 
@@ -64,14 +75,14 @@ void TerminalRenderer::render_recursive(std::shared_ptr<LayoutNode> node,
         out += "\033[0m";
     }
 
+    // Apply text and background styling (before padding so background wraps badge)
+    apply_style_ansi(st, out, timestamp_ms, truecolor);
+
     // Padding left
     for (int i = 0; i < st.padding.left; ++i) {
         out += ' ';
         cur_line_width++;
     }
-
-    // Apply text styling
-    apply_style_ansi(st, out, timestamp_ms, truecolor);
 
     // Text content
     if (!node->text.empty()) {
@@ -84,14 +95,14 @@ void TerminalRenderer::render_recursive(std::shared_ptr<LayoutNode> node,
         render_recursive(child, out, cur_line_width, line_count, timestamp_ms, truecolor, unicode);
     }
 
-    // Reset styles
-    out += "\033[0m";
-
     // Padding right
     for (int i = 0; i < st.padding.right; ++i) {
         out += ' ';
         cur_line_width++;
     }
+
+    // Reset styles
+    out += "\033[0m";
 
     // Border Right
     if (st.border_type != BorderType::NONE) {
