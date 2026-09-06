@@ -338,7 +338,7 @@ std::optional<std::string> LineEditor::read_line(double last_duration_ms, size_t
                 } else if (history_index_ > 0) {
                     history_index_--;
                 }
-                buffer_ = history_.get(history_index_);
+                buffer_ = history_.get(static_cast<size_t>(history_index_));
                 cursor_pos_ = buffer_.size();
                 break;
             }
@@ -347,7 +347,7 @@ std::optional<std::string> LineEditor::read_line(double last_duration_ms, size_t
                 if (history_index_ != -1) {
                     if (static_cast<size_t>(history_index_) + 1 < history_.size()) {
                         history_index_++;
-                        buffer_ = history_.get(history_index_);
+                        buffer_ = history_.get(static_cast<size_t>(history_index_));
                     } else {
                         history_index_ = -1;
                         buffer_ = saved_current_buffer_;

@@ -279,7 +279,7 @@ bool Environment::shift_positional_params(size_t n) {
     if (n > current_positional_.size()) {
         return false;
     }
-    current_positional_.erase(current_positional_.begin(), current_positional_.begin() + n);
+    current_positional_.erase(current_positional_.begin(), current_positional_.begin() + static_cast<std::ptrdiff_t>(n));
     return true;
 }
 

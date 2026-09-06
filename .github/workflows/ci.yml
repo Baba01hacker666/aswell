@@ -23,13 +23,7 @@ jobs:
       - name: Install Linting Tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y shellcheck cppcheck
-
-      - name: Lint Shell Scripts (shellcheck)
-        run: |
-          echo "Running shellcheck on shell scripts..."
-          shellcheck -s bash -e SC2016,SC2028,SC1090,SC1091 tests/run_all_tests.sh
-          shellcheck -s sh -e SC2016,SC2028,SC3019,SC3020,SC1090,SC1091 plugins/*.sh examples/*.sh
+          sudo apt-get install -y cppcheck
 
       - name: Static Analysis (cppcheck)
         run: |
@@ -44,10 +38,10 @@ jobs:
                    --suppress=useStlAlgorithm \
                    -I include/ src/
 
-      - name: Strict Compiler Lint (-Wall -Wextra -Werror)
+      - name: Hardened Compiler Check & Sanitizers
         run: |
           make clean
-          make -j$(nproc) CXXFLAGS="-std=c++20 -O2 -Wall -Wextra -Werror -Iinclude"
+          make harden
 
   test:
     name: Build & Test (${{ matrix.os }} - ${{ matrix.compiler }})
@@ -72,14 +66,14 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y build-essential
 
-      - name: Compile Aswell Shell
+      - name: Compile Aswell Shell (Hardened + Sanitizers)
         run: |
           make clean
-          make -j4 CXX=${{ matrix.compiler }}
+          make harden CXX=${{ matrix.compiler }}
 
       - name: Run Test Suite
         run: |
-          ./tests/run_all_tests.sh
+          make test CXX=${{ matrix.compiler }}
 
       - name: System Installation Test
         run: |

@@ -350,7 +350,7 @@ int Builtins::builtin_set(const std::vector<std::string>& args, Environment& env
             else if (args[i] == "vi") env.opt_vi_mode = true;
             else if (args[i] == "emacs") env.opt_vi_mode = false;
         } else if (a == "--") {
-            std::vector<std::string> params(args.begin() + i + 1, args.end());
+            std::vector<std::string> params(args.begin() + static_cast<std::ptrdiff_t>(i + 1), args.end());
             env.set_positional_params(params);
             break;
         }

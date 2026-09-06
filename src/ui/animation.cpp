@@ -6,7 +6,7 @@ namespace aswell {
 
 uint64_t AnimationEngine::now_ms() {
     using namespace std::chrono;
-    return duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count();
+    return static_cast<uint64_t>(duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count());
 }
 
 Color AnimationEngine::evaluate_color(const AnimationConfig& anim,
@@ -71,8 +71,10 @@ std::string AnimationEngine::evaluate_glyph(const AnimationConfig& anim,
         static const std::vector<std::string> frames = {
             "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"
         };
-        int duration = anim.duration_ms > 0 ? anim.duration_ms : 800;
-        int frame_idx = (timestamp_ms / (duration / frames.size())) % frames.size();
+        uint64_t duration = anim.duration_ms > 0 ? static_cast<uint64_t>(anim.duration_ms) : static_cast<uint64_t>(800);
+        uint64_t step = duration / frames.size();
+        if (step == 0) step = 1;
+        size_t frame_idx = static_cast<size_t>((timestamp_ms / step) % frames.size());
         return frames[frame_idx];
     }
     return default_glyph;

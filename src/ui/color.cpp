@@ -11,12 +11,12 @@ Color Color::from_hex(std::string_view hex) {
         int r = std::stoi(std::string(2, hex[0]), nullptr, 16);
         int g = std::stoi(std::string(2, hex[1]), nullptr, 16);
         int b = std::stoi(std::string(2, hex[2]), nullptr, 16);
-        return Color(r, g, b);
+        return Color(static_cast<uint8_t>(r), static_cast<uint8_t>(g), static_cast<uint8_t>(b));
     } else if (hex.size() >= 6) {
         int r = std::stoi(std::string(hex.substr(0, 2)), nullptr, 16);
         int g = std::stoi(std::string(hex.substr(2, 2)), nullptr, 16);
         int b = std::stoi(std::string(hex.substr(4, 2)), nullptr, 16);
-        return Color(r, g, b);
+        return Color(static_cast<uint8_t>(r), static_cast<uint8_t>(g), static_cast<uint8_t>(b));
     }
     return Color();
 }
@@ -99,10 +99,10 @@ Color Color::parse(std::string_view str) {
         auto parts = str_util::split(inner, ',');
         if (parts.size() >= 3) {
             try {
-                int r = std::stoi(str_util::trim(parts[0]));
-                int g = std::stoi(str_util::trim(parts[1]));
-                int b = std::stoi(str_util::trim(parts[2]));
-                return Color(r, g, b);
+                int r = std::clamp(std::stoi(str_util::trim(parts[0])), 0, 255);
+                int g = std::clamp(std::stoi(str_util::trim(parts[1])), 0, 255);
+                int b = std::clamp(std::stoi(str_util::trim(parts[2])), 0, 255);
+                return Color(static_cast<uint8_t>(r), static_cast<uint8_t>(g), static_cast<uint8_t>(b));
             } catch (...) {}
         }
     }

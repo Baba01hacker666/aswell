@@ -1,4 +1,15 @@
 CXX ?= g++
+HARDENING_FLAGS = -Wall -Wextra -Wpedantic -Werror \
+                  -Wconversion -Wsign-conversion \
+                  -Wshadow \
+                  -Wformat=2 \
+                  -Wnull-dereference \
+                  -Wold-style-cast \
+                  -Wnon-virtual-dtor \
+                  -Woverloaded-virtual \
+                  -Wimplicit-fallthrough \
+                  -fsanitize=address,undefined -g
+
 CXXFLAGS ?= -std=c++20 -O2 -Wall -Wextra -Iinclude
 LDFLAGS ?= 
 
@@ -13,6 +24,9 @@ OBJS = $(SRCS:.cpp=.o)
 TARGET = bin/aswell
 
 all: $(TARGET)
+
+harden:
+	$(MAKE) CXXFLAGS="-std=c++20 -O2 $(HARDENING_FLAGS) -Iinclude" LDFLAGS="-fsanitize=address,undefined"
 
 $(TARGET): $(OBJS) | bin
 	$(CXX) $(CXXFLAGS) $(OBJS) -o $@ $(LDFLAGS)
@@ -30,7 +44,7 @@ install: $(TARGET)
 	install -d /usr/local/bin
 	install -m 755 $(TARGET) /usr/local/bin/aswell
 
-test:
-	./tests/run_all_tests.sh
+test: $(TARGET)
+	CXX="$(CXX)" CXXFLAGS="$(CXXFLAGS)" LDFLAGS="$(LDFLAGS)" ./tests/run_all_tests.sh
 
-.PHONY: all clean install test
+.PHONY: all harden clean install test

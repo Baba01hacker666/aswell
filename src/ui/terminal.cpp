@@ -52,10 +52,10 @@ void Terminal::enable_raw_mode() {
 
     if (tcgetattr(STDIN_FILENO, &orig_termios_) == 0) {
         struct termios raw = orig_termios_;
-        raw.c_iflag &= ~(BRKINT | ICRNL | INPCK | ISTRIP | IXON);
+        raw.c_iflag &= ~static_cast<tcflag_t>(BRKINT | ICRNL | INPCK | ISTRIP | IXON);
         // Retain OPOST to keep ONLCR enabled: newlines automatically return carriage to column 0
-        raw.c_cflag |= (CS8);
-        raw.c_lflag &= ~(ECHO | ICANON | IEXTEN | ISIG);
+        raw.c_cflag |= static_cast<tcflag_t>(CS8);
+        raw.c_lflag &= ~static_cast<tcflag_t>(ECHO | ICANON | IEXTEN | ISIG);
         raw.c_cc[VMIN] = 1;
         raw.c_cc[VTIME] = 0;
 

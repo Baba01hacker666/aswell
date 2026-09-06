@@ -14,7 +14,9 @@ static void sig_handler(int signum) {
 }
 
 void SignalManager::init_signals(bool interactive) {
-    std::memset((void*)received_signals, 0, sizeof(received_signals));
+    for (size_t i = 0; i < sizeof(received_signals) / sizeof(received_signals[0]); ++i) {
+        received_signals[i] = 0;
+    }
     any_signal_pending = 0;
 
     if (interactive) {

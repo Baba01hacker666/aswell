@@ -86,7 +86,7 @@ std::string Executor::evaluate_command_substitution(const std::string& script) {
     char buffer[4096];
     ssize_t bytes_read = 0;
     while ((bytes_read = read(pipefd[0], buffer, sizeof(buffer))) > 0) {
-        output.append(buffer, bytes_read);
+        output.append(buffer, static_cast<size_t>(bytes_read));
     }
     close(pipefd[0]);
 
@@ -735,7 +735,7 @@ std::vector<std::string> Executor::find_similar_commands(const std::string& targ
 
     auto check_name = [&](const std::string& name) {
         int dist = str_util::levenshtein_distance(target, name);
-        if (dist <= 2 && dist < (int)target.size()) {
+        if (dist >= 0 && dist <= 2 && static_cast<size_t>(dist) < target.size()) {
             candidates.push_back({dist, name});
         }
     };

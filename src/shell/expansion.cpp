@@ -398,9 +398,9 @@ std::string Expansion::handle_parameter_expansion(const std::string& expr) {
             if (!len_str.empty()) {
                 int64_t len = evaluate_arithmetic(len_str);
                 if (len <= 0) return "";
-                return val.substr(offset, len);
+                return val.substr(static_cast<size_t>(offset), static_cast<size_t>(len));
             }
-            return val.substr(offset);
+            return val.substr(static_cast<size_t>(offset));
         }
     }
 
