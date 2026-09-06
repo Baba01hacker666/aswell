@@ -3,6 +3,7 @@
 #include "aswell/shell/parser.hpp"
 #include "aswell/shell/signals.hpp"
 #include <dirent.h>
+#include <array>
 
 namespace aswell {
 
@@ -287,9 +288,9 @@ int Executor::execute_pipeline(PipelineNode& pipeline, bool /*async*/, ControlFl
 
     // Multiple commands in pipeline: cmd1 | cmd2 | cmd3
     size_t num_cmds = pipeline.commands.size();
-    std::vector<int[2]> pipes(num_cmds - 1);
+    std::vector<std::array<int, 2>> pipes(num_cmds - 1);
     for (size_t i = 0; i < num_cmds - 1; ++i) {
-        if (pipe(pipes[i]) != 0) {
+        if (pipe(pipes[i].data()) != 0) {
             std::cerr << "aswell: pipe creation failed\n";
             return 1;
         }

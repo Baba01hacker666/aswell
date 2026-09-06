@@ -73,7 +73,7 @@ jobs:
 
       - name: Run Test Suite
         run: |
-          make test CXX=${{ matrix.compiler }}
+          make test-hardened CXX=${{ matrix.compiler }}
 
       - name: System Installation Test
         run: |

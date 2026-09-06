@@ -11,8 +11,8 @@ public:
         return {"git_info", "1.0.0", "Fast Git branch and repository inspector", "Aswell Team", true};
     }
 
-    void on_load(Environment& env, HookManager& hooks) override {
-        hooks.register_hook(HookType::ON_DIR_CHANGE, [&env](const std::vector<std::string>& args) {
+    void on_load(Environment& /*env*/, HookManager& hooks) override {
+        hooks.register_hook(HookType::ON_DIR_CHANGE, [](const std::vector<std::string>& args) {
             // Update git cache if needed
             (void)args;
         });

@@ -47,4 +47,7 @@ install: $(TARGET)
 test: $(TARGET)
 	CXX="$(CXX)" CXXFLAGS="$(CXXFLAGS)" LDFLAGS="$(LDFLAGS)" ./tests/run_all_tests.sh
 
-.PHONY: all harden clean install test
+test-hardened:
+	$(MAKE) test CXXFLAGS="-std=c++20 -O2 $(HARDENING_FLAGS) -Iinclude" LDFLAGS="-fsanitize=address,undefined"
+
+.PHONY: all harden clean install test test-hardened
