@@ -1,6 +1,7 @@
 #include "aswell/shell/builtins.hpp"
 #include "aswell/shell/executor.hpp"
 #include "aswell/shell/signals.hpp"
+#include "aswell/config/config.hpp"
 #include <fstream>
 #include <iomanip>
 #include <dirent.h>
@@ -859,13 +860,52 @@ int Builtins::builtin_aswell(const std::vector<std::string>& args, Environment& 
                       << "  * \033[1;36mnord\033[0m       - Arctic blue, frost, muted Scandinavian aesthetic\n"
                       << "  * \033[1;37mminimal\033[0m    - Monochrome single-character prompt, blazing speed\n"
                       << "  * \033[1;31mdracula\033[0m    - Vampire dark theme with purple and emerald highlights\n"
-                      << "  * \033[1;33mpowerline\033[0m  - Segmented status arrows with contrasting backgrounds\n"
-                      << "Use 'aswell theme set <name>' to apply.\n";
+                      << "  * \033[1;33mpowerline\033[0m  - Segmented status arrows with contrasting backgrounds\n";
             return 0;
         }
+        // Support: aswell theme set <name>
         if (args.size() >= 4 && args[2] == "set") {
             env.set_var("ASWELL_THEME", args[3], true);
             std::cout << "Aswell theme changed to: " << args[3] << "\n";
+            return 0;
+        }
+        // Support: aswell theme <name>  (without "set" keyword)
+        if (args.size() >= 3) {
+            env.set_var("ASWELL_THEME", args[2], true);
+            std::cout << "Aswell theme changed to: " << args[2] << "\n";
+            return 0;
+        }
+    }
+    if (sub == "config") {
+        if (args.size() == 2 || (args.size() >= 3 && args[2] == "list")) {
+            std::cout << "\033[1;34mAswell Configuration:\033[0m\n"
+                      << "  * \033[1;32mtheme\033[0m    - Switch or list visual themes\n"
+                      << "  * \033[1;32mcustom\033[0m   - Manage custom commands\n"
+                      << "  * \033[1;32mtemplate\033[0m - Manage prompt templates\n"
+                      << "  * \033[1;32mhooks\033[0m    - Manage dynamic script hooks\n"
+                      << "\nUsage: aswell config <subcommand>\n"
+                      << "Run 'aswell config list' to see available options.\n";
+            return 0;
+        }
+        if (args.size() >= 3 && args[2] == "path") {
+            std::cout << aswell::ConfigManager::get_config_dir() << "\n";
+            return 0;
+        }
+        if (args.size() >= 3 && args[2] == "theme") {
+            if (args.size() >= 4) {
+                // Either "aswell config theme set <name>" or "aswell config theme <name>"
+                if (args[3] == "set" && args.size() >= 5) {
+                    env.set_var("ASWELL_THEME", args[4], true);
+                    std::cout << "Aswell theme changed to: " << args[4] << "\n";
+                } else {
+                    // "aswell config theme <name>" or "aswell config theme set <name>" with single arg
+                    env.set_var("ASWELL_THEME", args[3], true);
+                    std::cout << "Aswell theme changed to: " << args[3] << "\n";
+                }
+            } else {
+                // "aswell config theme" - show current theme
+                std::cout << "Current theme: " << env.get_var("ASWELL_THEME") << "\n";
+            }
             return 0;
         }
     }
