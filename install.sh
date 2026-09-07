@@ -157,6 +157,11 @@ else
 fi
 log_step "Installed ${INSTALL_PREFIX}/bin/aswell"
 
+# Also symlink to ~/.local/bin if directory exists
+if [ -d "$HOME/.local/bin" ] && [ "${INSTALL_PREFIX}/bin" != "$HOME/.local/bin" ]; then
+    ln -sf "${INSTALL_PREFIX}/bin/aswell" "$HOME/.local/bin/aswell" 2>/dev/null || true
+fi
+
 # 7. Initialize user configuration & themes
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/aswell"
 mkdir -p "$CONFIG_DIR/commands" "$CONFIG_DIR/themes" "$CONFIG_DIR/plugins"

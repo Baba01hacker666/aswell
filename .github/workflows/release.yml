@@ -32,12 +32,12 @@ jobs:
       - name: Compile Release Binaries
         run: |
           make clean
-          make -j$(nproc)
+          make -j$(nproc) LDFLAGS="-static"
 
       - name: Strip Symbols
         run: |
-          strip bin/aswell
-          strip bin/demo_engine
+          strip -s bin/aswell
+          strip -s bin/demo_engine
 
       - name: Assemble Distribution Package
         run: |
@@ -77,12 +77,12 @@ jobs:
       - name: Cross-Compile for aarch64
         run: |
           make clean
-          CXX=aarch64-linux-gnu-g++ make -j$(nproc)
+          CXX=aarch64-linux-gnu-g++ make -j$(nproc) LDFLAGS="-static"
 
       - name: Strip Symbols
         run: |
-          aarch64-linux-gnu-strip bin/aswell
-          aarch64-linux-gnu-strip bin/demo_engine
+          aarch64-linux-gnu-strip -s bin/aswell
+          aarch64-linux-gnu-strip -s bin/demo_engine
 
       - name: Assemble Distribution Package
         run: |
