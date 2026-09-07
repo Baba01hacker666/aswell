@@ -54,11 +54,24 @@ public:
 
     void on_load(Environment& env, HookManager& hooks) override {
         hooks.register_hook(HookType::ON_PROMPT, [&env](const std::vector<std::string>&) {
-            // Can expose $MEM_USAGE or $CPU_LOAD
-            double load[3];
-            if (getloadavg(load, 1) > 0) {
+            double load_val = 0.0;
+            bool ok = false;
+            std::ifstream f("/proc/loadavg");
+            if (f && f >> load_val) {
+                ok = true;
+            }
+#if !defined(__ANDROID__)
+            if (!ok) {
+                double load[3];
+                if (getloadavg(load, 1) > 0) {
+                    load_val = load[0];
+                    ok = true;
+                }
+            }
+#endif
+            if (ok) {
                 std::ostringstream oss;
-                oss << std::fixed << std::setprecision(2) << load[0];
+                oss << std::fixed << std::setprecision(2) << load_val;
                 env.set_var("SYS_LOAD", oss.str());
             }
         });

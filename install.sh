@@ -73,7 +73,11 @@ log_step "Detected architecture: ${ARCH}"
 
 # 3. Determine download URL
 GITHUB_REPO="Baba01hacker666/aswell"
-ARCHIVE_NAME="aswell-linux-${ARCH}.tar.gz"
+if [ "$IS_TERMUX" -eq 1 ]; then
+    ARCHIVE_NAME="aswell-termux-${ARCH}.tar.gz"
+else
+    ARCHIVE_NAME="aswell-linux-${ARCH}.tar.gz"
+fi
 
 if [ -n "$VERSION" ]; then
     DOWNLOAD_URL="https://github.com/${GITHUB_REPO}/releases/download/${VERSION}/${ARCHIVE_NAME}"
@@ -87,22 +91,35 @@ fi
 TMP_DIR=$(mktemp -d 2>/dev/null || mktemp -d -t 'aswell-install')
 trap 'rm -rf "$TMP_DIR"' EXIT INT TERM
 
+do_download() {
+    local url="$1"
+    local dest="$2"
+    if command -v curl >/dev/null 2>&1; then
+        curl -fSL --progress-bar "$url" -o "$dest"
+    elif command -v wget >/dev/null 2>&1; then
+        wget -q --show-progress "$url" -O "$dest"
+    else
+        log_error "Neither curl nor wget found. Please install curl or wget."
+        exit 1
+    fi
+}
+
 log_info "Downloading ${ARCHIVE_NAME}..."
-if command -v curl >/dev/null 2>&1; then
-    if ! curl -fSL --progress-bar "$DOWNLOAD_URL" -o "$TMP_DIR/$ARCHIVE_NAME"; then
+if ! do_download "$DOWNLOAD_URL" "$TMP_DIR/$ARCHIVE_NAME"; then
+    if [ "$IS_TERMUX" -eq 1 ]; then
+        FALLBACK_NAME="aswell-linux-${ARCH}.tar.gz"
+        FALLBACK_URL="${DOWNLOAD_URL%/*}/${FALLBACK_NAME}"
+        log_warn "Termux-specific package not found, trying ${FALLBACK_NAME}..."
+        if ! do_download "$FALLBACK_URL" "$TMP_DIR/$ARCHIVE_NAME"; then
+            log_error "Failed to download prebuilt binary from: $DOWNLOAD_URL"
+            printf "\nCheck the GitHub Releases page: https://github.com/${GITHUB_REPO}/releases\n"
+            exit 1
+        fi
+    else
         log_error "Failed to download prebuilt binary from: $DOWNLOAD_URL"
         printf "\nCheck the GitHub Releases page: https://github.com/${GITHUB_REPO}/releases\n"
         exit 1
     fi
-elif command -v wget >/dev/null 2>&1; then
-    if ! wget -q --show-progress "$DOWNLOAD_URL" -O "$TMP_DIR/$ARCHIVE_NAME"; then
-        log_error "Failed to download prebuilt binary from: $DOWNLOAD_URL"
-        printf "\nCheck the GitHub Releases page: https://github.com/${GITHUB_REPO}/releases\n"
-        exit 1
-    fi
-else
-    log_error "Neither curl nor wget found. Please install curl or wget."
-    exit 1
 fi
 log_step "Downloaded prebuilt release package"
 
