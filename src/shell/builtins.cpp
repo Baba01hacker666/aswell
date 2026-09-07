@@ -912,7 +912,7 @@ int Builtins::builtin_aswell(const std::vector<std::string>& args, Environment& 
     if (sub == "custom") {
         const char* home_env = std::getenv("HOME");
         std::string cmd_dir = (home_env ? std::string(home_env) : "/root") + "/.config/aswell/commands";
-        mkdir(cmd_dir.c_str(), 0755);
+        fs_util::mkdir_p(cmd_dir);
 
         if (args.size() == 2 || (args.size() >= 3 && args[2] == "list")) {
             std::cout << "\033[1;34mCustom Commands (~/.config/aswell/commands/):\033[0m\n";

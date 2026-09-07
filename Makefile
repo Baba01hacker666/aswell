@@ -28,7 +28,7 @@ DEMO_OBJS = $(filter-out src/main.o, $(OBJS)) examples/demo_engine.o
 all: $(TARGET) demo
 
 harden:
-	$(MAKE) CXXFLAGS="-std=c++20 -O2 $(HARDENING_FLAGS) -Iinclude" LDFLAGS="-fsanitize=address,undefined"
+	$(MAKE) -j$(shell nproc 2>/dev/null || echo 2) CXXFLAGS="-std=c++20 -O2 $(HARDENING_FLAGS) -Iinclude" LDFLAGS="-fsanitize=address,undefined"
 
 $(TARGET): $(OBJS) | bin
 	$(CXX) $(CXXFLAGS) $(OBJS) -o $@ $(LDFLAGS)

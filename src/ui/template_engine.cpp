@@ -787,7 +787,7 @@ std::string TemplateEngine::get_templates_dir() {
 
 void TemplateEngine::ensure_default_templates() {
     std::string tdir = get_templates_dir();
-    mkdir(tdir.c_str(), 0755);
+    fs_util::mkdir_p(tdir);
 
     // 1. ~/.config/aswell/templates/events.html
     std::string events_file = tdir + "/events.html";

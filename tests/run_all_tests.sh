@@ -13,8 +13,8 @@ CXXFLAGS="${CXXFLAGS:--std=c++20 -O2}"
 LDFLAGS="${LDFLAGS:-}"
 
 echo "1. Building Unit Tests..."
-$CXX $CXXFLAGS -Iinclude tests/test_lexer.cpp src/shell/lexer.o src/shell/parser.o src/shell/executor.o src/shell/expansion.o src/shell/environment.o src/shell/jobs.o src/shell/signals.o src/shell/builtins.o src/ui/template_engine.o src/ui/terminal.o src/ui/color.o -o bin/test_lexer $LDFLAGS
-$CXX $CXXFLAGS -Iinclude tests/test_parser.cpp src/shell/lexer.o src/shell/parser.o src/shell/executor.o src/shell/expansion.o src/shell/environment.o src/shell/jobs.o src/shell/signals.o src/shell/builtins.o src/ui/template_engine.o src/ui/terminal.o src/ui/color.o -o bin/test_parser $LDFLAGS
+$CXX $CXXFLAGS -Iinclude tests/test_lexer.cpp src/shell/lexer.o -o bin/test_lexer $LDFLAGS
+$CXX $CXXFLAGS -Iinclude tests/test_parser.cpp src/shell/lexer.o src/shell/parser.o -o bin/test_parser $LDFLAGS
 $CXX $CXXFLAGS -Iinclude tests/test_expansion.cpp src/shell/expansion.o src/shell/environment.o src/shell/signals.o -o bin/test_expansion $LDFLAGS
 $CXX $CXXFLAGS -Iinclude tests/test_css.cpp src/ui/css_parser.o src/ui/color.o -o bin/test_css $LDFLAGS
 $CXX $CXXFLAGS -Iinclude tests/test_ui.cpp src/ui/dom.o src/ui/layout.o src/ui/render.o src/ui/color.o src/ui/animation.o src/ui/css_parser.o src/ui/prompt.o src/ui/terminal.o src/ui/template_engine.o src/shell/environment.o -o bin/test_ui $LDFLAGS

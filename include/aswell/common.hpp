@@ -202,4 +202,27 @@ inline std::string escape_shell(std::string_view s) {
 
 } // namespace str_util
 
+namespace fs_util {
+
+inline bool mkdir_p(const std::string& path, mode_t mode = 0755) {
+    if (path.empty()) return false;
+    std::string current;
+    for (size_t i = 0; i < path.size(); ++i) {
+        current += path[i];
+        if (path[i] == '/' || i == path.size() - 1) {
+            if (!current.empty() && current != "/") {
+                struct stat st;
+                if (::stat(current.c_str(), &st) != 0) {
+                    if (::mkdir(current.c_str(), mode) != 0 && errno != EEXIST) {
+                        return false;
+                    }
+                }
+            }
+        }
+    }
+    return true;
+}
+
+} // namespace fs_util
+
 } // namespace aswell

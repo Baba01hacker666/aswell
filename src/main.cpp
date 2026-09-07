@@ -121,6 +121,12 @@ int main(int argc, char* argv[]) {
                 ConfigManager::save(cfg);
                 std::cout << "Theme switched to \033[1;32m" << cfg.theme_name << "\033[0m\n";
                 return 0;
+            } else if (i + 1 < argc && argv[i + 1][0] != '-') {
+                ShellConfig cfg = ConfigManager::load();
+                cfg.theme_name = argv[i + 1];
+                ConfigManager::save(cfg);
+                std::cout << "Theme switched to \033[1;32m" << cfg.theme_name << "\033[0m\n";
+                return 0;
             }
         } else if (arg == "demo" || arg == "--demo") {
             bool auto_mode = false;

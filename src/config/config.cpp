@@ -70,9 +70,9 @@ ShellConfig ConfigManager::load() {
 
 void ConfigManager::save(const ShellConfig& cfg) {
     std::string dir = get_config_dir();
-    mkdir(dir.c_str(), 0755);
-    mkdir((dir + "/themes").c_str(), 0755);
-    mkdir((dir + "/plugins").c_str(), 0755);
+    fs_util::mkdir_p(dir + "/themes");
+    fs_util::mkdir_p(dir + "/plugins");
+    fs_util::mkdir_p(dir + "/commands");
 
     std::string cfg_file = dir + "/config.txt";
     std::ofstream f(cfg_file);
