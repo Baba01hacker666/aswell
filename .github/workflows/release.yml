@@ -122,7 +122,7 @@ jobs:
           fi
           echo "Using Android NDK at: $NDK_DIR"
           LLVM_BIN="$NDK_DIR/toolchains/llvm/prebuilt/linux-x86_64/bin"
-          echo "CXX=$LLVM_BIN/aarch64-linux-android24-clang++" >> $GITHUB_ENV
+          echo "CXX=$LLVM_BIN/aarch64-linux-android28-clang++" >> $GITHUB_ENV
           echo "STRIP=$LLVM_BIN/llvm-strip" >> $GITHUB_ENV
 
       - name: Compile for Termux (Android NDK)
