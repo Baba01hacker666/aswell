@@ -7,6 +7,14 @@
 
 namespace aswell {
 
+static std::string get_fallback_shell() {
+    if (access("/bin/sh", X_OK) == 0) return "/bin/sh";
+    if (access("/data/data/com.termux/files/usr/bin/bash", X_OK) == 0) return "/data/data/com.termux/files/usr/bin/bash";
+    if (access("/data/data/com.termux/files/usr/bin/sh", X_OK) == 0) return "/data/data/com.termux/files/usr/bin/sh";
+    if (access("/system/bin/sh", X_OK) == 0) return "/system/bin/sh";
+    return "/bin/sh";
+}
+
 Executor::Executor(Environment& env, JobManager& jobs)
     : env_(env), jobs_(jobs), expansion_(env, [this](const std::string& script) {
         return this->evaluate_command_substitution(script);
@@ -519,7 +527,7 @@ int Executor::execute_simple_command(SimpleCommandNode& cmd, ControlFlow& flow) 
         execve(executable_path.c_str(), argv.data(), env_.get_envp().data());
         if (errno == ENOEXEC || errno == EACCES) {
             std::vector<char*> sh_argv;
-            std::string sh_bin = "/bin/sh";
+            std::string sh_bin = get_fallback_shell();
             sh_argv.push_back(const_cast<char*>(sh_bin.c_str()));
             sh_argv.push_back(const_cast<char*>(executable_path.c_str()));
             for (size_t i = 1; i < expanded_words.size(); ++i) {
@@ -557,7 +565,7 @@ int Executor::execute_external(const std::string& executable_path, const std::ve
         execve(executable_path.c_str(), argv.data(), env_.get_envp().data());
         if (errno == ENOEXEC || errno == EACCES) {
             std::vector<char*> sh_argv;
-            std::string sh_bin = "/bin/sh";
+            std::string sh_bin = get_fallback_shell();
             sh_argv.push_back(const_cast<char*>(sh_bin.c_str()));
             sh_argv.push_back(const_cast<char*>(executable_path.c_str()));
             for (size_t i = 1; i < args.size(); ++i) {

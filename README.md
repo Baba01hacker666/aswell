@@ -14,7 +14,7 @@
   <a href="#"><img src="https://img.shields.io/badge/C%2B%2B-20-brightgreen.svg?style=flat-square" alt="C++20" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-purple.svg?style=flat-square" alt="License" /></a>
   <a href="#"><img src="https://img.shields.io/badge/TrueColor-24--bit-orange.svg?style=flat-square" alt="24-bit TrueColor" /></a>
-  <a href="#"><img src="https://img.shields.io/badge/Platform-Linux%20(x86__64%20%7C%20aarch64)-lightgrey.svg?style=flat-square" alt="Platform" /></a>
+  <a href="#"><img src="https://img.shields.io/badge/Platform-Linux%20%7C%20Termux%20(Android)-lightgrey.svg?style=flat-square" alt="Platform" /></a>
 </p>
 
 ---
@@ -212,13 +212,15 @@ Interactive typos are automatically caught with helpful suggestions and suggesti
 
 ### One-Line Install (Prebuilt Binaries)
 
-Install prebuilt binaries for Linux (`x86_64` and `aarch64`) directly via `curl` with zero build dependencies:
+Install prebuilt binaries for Linux (`x86_64` and `aarch64`) or **Android (Termux)** directly via `curl` with zero build dependencies:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Baba01hacker666/aswell/master/install.sh | bash
 ```
 
-This installer fetches pre-compiled release binaries built by GitHub Actions workflows, installs `aswell` and `aswell-demo` directly to `/usr/local/bin` (or `~/.local/bin`), initializes custom commands and themes in `~/.config/aswell/`, and registers the shell in `/etc/shells`.
+> **📱 Termux on Android**: Run `pkg update && pkg install curl tar`, then run the command above. The installer automatically detects Termux, installs to `$PREFIX/bin/aswell`, configures `$PREFIX/etc/shells`, and sets up fallback execution via `/data/data/com.termux/files/usr/bin/bash`.
+
+This installer fetches pre-compiled release binaries built by GitHub Actions workflows, installs `aswell` and `aswell-demo` directly to `/usr/local/bin` (or `$PREFIX/bin` / `~/.local/bin`), initializes custom commands and themes in `~/.config/aswell/`, and registers the shell.
 
 ---
 

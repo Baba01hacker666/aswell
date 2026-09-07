@@ -41,11 +41,18 @@ log_header()  {
 
 log_header
 
-# 1. Platform validation (Linux only)
+# 1. Platform validation (Linux & Termux)
 OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
 if [ "$OS" != "linux" ]; then
-    log_error "Aswell prebuilt binaries currently support Linux (x86_64 and aarch64)."
+    log_error "Aswell prebuilt binaries currently support Linux (x86_64 and aarch64) and Android/Termux."
     exit 1
+fi
+
+# Detect Termux environment
+IS_TERMUX=0
+if [ -n "$TERMUX_VERSION" ] || [ -d "/data/data/com.termux" ] || [ "${PREFIX:-}" = "/data/data/com.termux/files/usr" ]; then
+    IS_TERMUX=1
+    log_step "Detected Termux environment"
 fi
 
 # 2. Architecture detection (x86_64 or aarch64)
@@ -54,7 +61,7 @@ case "$ARCH_RAW" in
     x86_64|amd64)
         ARCH="x86_64"
         ;;
-    aarch64|arm64|armv8*)
+    aarch64|arm64|armv8*|armv9*)
         ARCH="aarch64"
         ;;
     *)
@@ -62,7 +69,7 @@ case "$ARCH_RAW" in
         exit 1
         ;;
 esac
-log_step "Detected platform: linux-${ARCH}"
+log_step "Detected architecture: ${ARCH}"
 
 # 3. Determine download URL
 GITHUB_REPO="Baba01hacker666/aswell"
@@ -113,7 +120,10 @@ fi
 log_step "Extracted binaries successfully"
 
 # 6. Determine installation directory
-if [ -n "$PREFIX" ]; then
+if [ "$IS_TERMUX" -eq 1 ]; then
+    INSTALL_PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
+    SUDO=""
+elif [ -n "$PREFIX" ]; then
     INSTALL_PREFIX="$PREFIX"
     SUDO=""
 elif [ "$(id -u)" -eq 0 ]; then
@@ -132,9 +142,18 @@ fi
 
 log_info "Installing to ${INSTALL_PREFIX}/bin..."
 $SUDO mkdir -p "${INSTALL_PREFIX}/bin"
-$SUDO install -m 755 "$TMP_DIR/aswell" "${INSTALL_PREFIX}/bin/aswell"
-if [ -f "$TMP_DIR/aswell-demo" ]; then
-    $SUDO install -m 755 "$TMP_DIR/aswell-demo" "${INSTALL_PREFIX}/bin/aswell-demo"
+if command -v install >/dev/null 2>&1; then
+    $SUDO install -m 755 "$TMP_DIR/aswell" "${INSTALL_PREFIX}/bin/aswell"
+    if [ -f "$TMP_DIR/aswell-demo" ]; then
+        $SUDO install -m 755 "$TMP_DIR/aswell-demo" "${INSTALL_PREFIX}/bin/aswell-demo"
+    fi
+else
+    $SUDO cp -f "$TMP_DIR/aswell" "${INSTALL_PREFIX}/bin/aswell"
+    $SUDO chmod 755 "${INSTALL_PREFIX}/bin/aswell"
+    if [ -f "$TMP_DIR/aswell-demo" ]; then
+        $SUDO cp -f "$TMP_DIR/aswell-demo" "${INSTALL_PREFIX}/bin/aswell-demo"
+        $SUDO chmod 755 "${INSTALL_PREFIX}/bin/aswell-demo"
+    fi
 fi
 log_step "Installed ${INSTALL_PREFIX}/bin/aswell"
 
@@ -154,15 +173,25 @@ if [ -d "$TMP_DIR/themes" ]; then
     log_step "Initialized ~/.config/aswell/ (custom commands & themes ready)"
 fi
 
-# 8. Check /etc/shells registration
+# 8. Check shells registration
 ASWELL_BIN="${INSTALL_PREFIX}/bin/aswell"
-if [ -f /etc/shells ] && ! grep -qx "$ASWELL_BIN" /etc/shells 2>/dev/null; then
-    if [ "$(id -u)" -eq 0 ]; then
-        echo "$ASWELL_BIN" >> /etc/shells
-        log_step "Added $ASWELL_BIN to /etc/shells"
+if [ "$IS_TERMUX" -eq 1 ]; then
+    SHELLS_FILE="${INSTALL_PREFIX}/etc/shells"
+    mkdir -p "${INSTALL_PREFIX}/etc" 2>/dev/null || true
+    if [ ! -f "$SHELLS_FILE" ]; then
+        touch "$SHELLS_FILE" 2>/dev/null || true
+    fi
+else
+    SHELLS_FILE="/etc/shells"
+fi
+
+if [ -f "$SHELLS_FILE" ] && ! grep -qx "$ASWELL_BIN" "$SHELLS_FILE" 2>/dev/null; then
+    if [ "$IS_TERMUX" -eq 1 ] || [ "$(id -u)" -eq 0 ]; then
+        echo "$ASWELL_BIN" >> "$SHELLS_FILE" 2>/dev/null && \
+            log_step "Added $ASWELL_BIN to $SHELLS_FILE" || true
     elif [ -n "$SUDO" ]; then
-        echo "$ASWELL_BIN" | $SUDO tee -a /etc/shells >/dev/null 2>&1 && \
-            log_step "Added $ASWELL_BIN to /etc/shells" || true
+        echo "$ASWELL_BIN" | $SUDO tee -a "$SHELLS_FILE" >/dev/null 2>&1 && \
+            log_step "Added $ASWELL_BIN to $SHELLS_FILE" || true
     fi
 fi
 

@@ -43,7 +43,15 @@ Environment::Environment() {
     std::string custom_cmd_dir = home_str + "/.config/aswell/commands";
     std::string custom_bin_dir = home_str + "/.config/aswell/bin";
 
-    std::string cur_path = has_var("PATH") ? get_var("PATH") : "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin";
+    std::string default_path = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin";
+    const char* prefix_env = std::getenv("PREFIX");
+    if (prefix_env && std::string(prefix_env).find("com.termux") != std::string::npos) {
+        default_path = std::string(prefix_env) + "/bin:" + default_path;
+    } else if (access("/data/data/com.termux/files/usr/bin", F_OK) == 0) {
+        default_path = "/data/data/com.termux/files/usr/bin:" + default_path;
+    }
+
+    std::string cur_path = has_var("PATH") ? get_var("PATH") : default_path;
     if (cur_path.find(custom_cmd_dir) == std::string::npos) {
         cur_path = custom_cmd_dir + ":" + custom_bin_dir + ":" + cur_path;
     }

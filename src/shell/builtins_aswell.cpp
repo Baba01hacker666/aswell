@@ -123,7 +123,13 @@ int Builtins::builtin_aswell(const std::vector<std::string>& args, Environment& 
                 std::cerr << "aswell: failed to create custom command " << path << "\n";
                 return 1;
             }
-            f << "#!/bin/sh\n";
+            std::string shebang = "#!/bin/sh\n";
+            if (access("/data/data/com.termux/files/usr/bin/bash", X_OK) == 0) {
+                shebang = "#!/data/data/com.termux/files/usr/bin/bash\n";
+            } else if (access("/data/data/com.termux/files/usr/bin/sh", X_OK) == 0) {
+                shebang = "#!/data/data/com.termux/files/usr/bin/sh\n";
+            }
+            f << shebang;
             for (size_t i = 4; i < args.size(); ++i) {
                 f << args[i] << (i + 1 < args.size() ? " " : "");
             }
