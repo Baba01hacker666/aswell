@@ -1,0 +1,108 @@
+name: Release & Prebuilt Binary Distribution
+
+on:
+  push:
+    tags:
+      - 'v*'
+  release:
+    types: [published, created]
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Tag or version for release (e.g. v1.0.2)'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  build-linux-x86_64:
+    name: Build (linux-x86_64)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Build Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential
+
+      - name: Compile Release Binaries
+        run: |
+          make clean
+          make -j$(nproc)
+
+      - name: Strip Symbols
+        run: |
+          strip bin/aswell
+          strip bin/demo_engine
+
+      - name: Assemble Distribution Package
+        run: |
+          mkdir -p dist/themes
+          cp bin/aswell dist/aswell
+          cp bin/demo_engine dist/aswell-demo
+          cp examples/*.css dist/themes/ 2>/dev/null || true
+          cp README.md LICENSE dist/ 2>/dev/null || true
+          tar -czf aswell-linux-x86_64.tar.gz -C dist .
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: aswell-linux-x86_64
+          path: aswell-linux-x86_64.tar.gz
+
+      - name: Upload Release Asset
+        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'release' || github.event.inputs.tag_name != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag_name || github.ref_name }}
+          files: aswell-linux-x86_64.tar.gz
+          generate_release_notes: true
+
+  build-linux-aarch64:
+    name: Build (linux-aarch64)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install aarch64 Cross-Compiler
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential g++-aarch64-linux-gnu
+
+      - name: Cross-Compile for aarch64
+        run: |
+          make clean
+          CXX=aarch64-linux-gnu-g++ make -j$(nproc)
+
+      - name: Strip Symbols
+        run: |
+          aarch64-linux-gnu-strip bin/aswell
+          aarch64-linux-gnu-strip bin/demo_engine
+
+      - name: Assemble Distribution Package
+        run: |
+          mkdir -p dist/themes
+          cp bin/aswell dist/aswell
+          cp bin/demo_engine dist/aswell-demo
+          cp examples/*.css dist/themes/ 2>/dev/null || true
+          cp README.md LICENSE dist/ 2>/dev/null || true
+          tar -czf aswell-linux-aarch64.tar.gz -C dist .
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: aswell-linux-aarch64
+          path: aswell-linux-aarch64.tar.gz
+
+      - name: Upload Release Asset
+        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'release' || github.event.inputs.tag_name != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag_name || github.ref_name }}
+          files: aswell-linux-aarch64.tar.gz
+          generate_release_notes: true

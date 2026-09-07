@@ -14,7 +14,7 @@
   <a href="#"><img src="https://img.shields.io/badge/C%2B%2B-20-brightgreen.svg?style=flat-square" alt="C++20" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-purple.svg?style=flat-square" alt="License" /></a>
   <a href="#"><img src="https://img.shields.io/badge/TrueColor-24--bit-orange.svg?style=flat-square" alt="24-bit TrueColor" /></a>
-  <a href="#"><img src="https://img.shields.io/badge/Platform-Linux%20%7C%20macOS-lightgrey.svg?style=flat-square" alt="Platform" /></a>
+  <a href="#"><img src="https://img.shields.io/badge/Platform-Linux%20(x86__64%20%7C%20aarch64)-lightgrey.svg?style=flat-square" alt="Platform" /></a>
 </p>
 
 ---
@@ -208,12 +208,27 @@ Interactive typos are automatically caught with helpful suggestions and suggesti
 
 ## 🚀 Quick Start
 
-### Prerequisites
-- GCC 10+ or Clang 11+ with C++20 support
-- GNU Make
-- POSIX-compliant Unix environment (Linux, macOS, BSD, WSL)
+## 🚀 Installation
 
-### Compilation and Installation
+### One-Line Install (Prebuilt Binaries)
+
+Install prebuilt binaries for Linux (`x86_64` and `aarch64`) directly via `curl` with zero build dependencies:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Baba01hacker666/aswell/master/install.sh | bash
+```
+
+This installer fetches pre-compiled release binaries built by GitHub Actions workflows, installs `aswell` and `aswell-demo` directly to `/usr/local/bin` (or `~/.local/bin`), initializes custom commands and themes in `~/.config/aswell/`, and registers the shell in `/etc/shells`.
+
+---
+
+### Building from Source (Optional)
+
+If you prefer building from source:
+
+#### Prerequisites
+- Linux with GCC 10+ or Clang 11+ (C++20 support)
+- GNU Make
 
 ```bash
 # Clone the repository
@@ -221,7 +236,7 @@ git clone https://github.com/Baba01hacker666/aswell.git
 cd aswell
 
 # Compile the shell binary
-make -j$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
+make -j$(nproc)
 
 # Install system-wide (installs to /usr/local/bin/aswell)
 sudo make install
