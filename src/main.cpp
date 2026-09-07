@@ -23,7 +23,8 @@ static void print_help() {
     std::cout << "Usage: aswell [OPTIONS] [SCRIPT [ARGS...]]\n"
               << "       aswell -c COMMAND [ARGS...]\n"
               << "       aswell config\n"
-              << "       aswell theme [list | set NAME]\n\n"
+              << "       aswell theme [list | set NAME]\n"
+              << "       aswell color [OPTIONS] <COLOR> [TEXT...]\n\n"
               << "A modern, beautiful, powerful Unix shell with POSIX compatibility.\n\n"
               << "Options:\n"
               << "  -c COMMAND     Execute command string\n"
@@ -35,6 +36,7 @@ static void print_help() {
               << "Subcommands:\n"
               << "  config         Open interactive configuration TUI\n"
               << "  theme          List or switch themes\n"
+              << "  color          Print colored text or inspect palettes\n"
               << "  demo           Run engine animation & UI showcase (--auto for headless)\n";
 }
 
@@ -128,6 +130,13 @@ int main(int argc, char* argv[]) {
                 std::cout << "Theme switched to \033[1;32m" << cfg.theme_name << "\033[0m\n";
                 return 0;
             }
+        } else if (arg == "color") {
+            std::vector<std::string> color_args;
+            color_args.push_back("color");
+            for (int j = i + 1; j < argc; ++j) {
+                color_args.push_back(argv[j]);
+            }
+            return Builtins::builtin_color(color_args, env);
         } else if (arg == "demo" || arg == "--demo") {
             bool auto_mode = false;
             for (int j = i + 1; j < argc; ++j) {
@@ -235,6 +244,9 @@ int main(int argc, char* argv[]) {
     // Load configuration
     ShellConfig cfg = ConfigManager::load();
     env.opt_vi_mode = cfg.vi_mode;
+    if (cfg.enable_colored_output && !env.opt_no_theme) {
+        env.init_color_aliases();
+    }
 
     // Load startup file (~/.aswellrc or ~/.config/aswell/aswellrc)
     const char* home = std::getenv("HOME");

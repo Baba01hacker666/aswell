@@ -46,7 +46,8 @@ std::vector<CompletionCandidate> CompletionEngine::complete_command(const std::s
         {"type", "Describe command type"}, {"wait", "Wait for jobs"},
         {"jobs", "List active jobs"}, {"fg", "Bring job to foreground"},
         {"bg", "Run job in background"}, {"kill", "Send signal to process"},
-        {"history", "Show command history"}, {"aswell", "Aswell configuration"}
+        {"history", "Show command history"}, {"aswell", "Aswell configuration"},
+        {"color", "Output colored text with TrueColor styling"}
     };
     for (const auto& [b, desc] : b_list) {
         add(b, desc);

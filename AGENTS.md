@@ -152,7 +152,13 @@ Aswell provides a dedicated first-class custom commands directory:
 - **Tab Completion**: `CompletionEngine` scans `~/.config/aswell/commands/` and badges custom commands with a bright green `[CUSTOM]` badge in `LineEditor::show_completion_menu`.
 - **Management Builtin**: `aswell custom [list | add <name> <script...> | path]`.
 
-### 4. Git & Commit Guidelines
+### 4. Colored Outputs & Commands Subsystem
+Aswell provides dedicated primitives and environment variables for rich terminal colors:
+- **Builtin `color` Command & `aswell color`**: Supports named colors, 24-bit TrueColor (`#rrggbb`), gradients (`color gradient <c1> <c2> <text>`), rainbow effects (`color rainbow <text>`), style flags (`--bold`, `--dim`, `--italic`, `--underline`, `--reverse`, `--bg`), template evaluation (`color eval <markup>`), and streaming pipelines via stdin (`cmd | color <c>`).
+- **Full Escape Sequence Conformance**: `echo -e` and `printf` support octal escapes (`\033`), hex escapes (`\x1b`), `\e`, and `%b` (POSIX argument escape expansion).
+- **Environment & Aliases**: Exports `COLORTERM=truecolor` and `CLICOLOR=1` and sets default color aliases (`ls`, `grep`, `diff`, etc.) in interactive mode, toggleable via `colored_output=true` in `~/.config/aswell/config.txt`.
+
+### 5. Git & Commit Guidelines
 - **Author Identity**: Commits must be authored by:
   `Baba01hacker666 <117832562+Baba01hacker666@users.noreply.github.com>`
 - **Commit Format**: Use conventional commits:

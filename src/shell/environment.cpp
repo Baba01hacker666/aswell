@@ -50,6 +50,13 @@ Environment::Environment() {
     set_var("PATH", cur_path, true);
 
     set_var("SHELL", "aswell", true);
+
+    if (!has_var("COLORTERM")) {
+        set_var("COLORTERM", "truecolor", true);
+    }
+    if (!has_var("CLICOLOR")) {
+        set_var("CLICOLOR", "1", true);
+    }
 }
 
 void Environment::set_var(const std::string& name, const std::string& value, bool export_var) {
@@ -320,6 +327,24 @@ void Environment::remove_alias(const std::string& name) {
 
 void Environment::clear_aliases() {
     aliases_.clear();
+}
+
+void Environment::init_color_aliases() {
+    set_alias("ls", "ls --color=auto");
+    set_alias("grep", "grep --color=auto");
+    set_alias("egrep", "egrep --color=auto");
+    set_alias("fgrep", "fgrep --color=auto");
+    set_alias("diff", "diff --color=auto");
+    set_alias("ip", "ip --color=auto");
+}
+
+void Environment::remove_color_aliases() {
+    remove_alias("ls");
+    remove_alias("grep");
+    remove_alias("egrep");
+    remove_alias("fgrep");
+    remove_alias("diff");
+    remove_alias("ip");
 }
 
 void Environment::set_function(const std::string& name, std::shared_ptr<FunctionDefNode> func) {

@@ -70,6 +70,8 @@ public:
     bool get_alias(const std::string& name, std::string& out_value) const;
     void remove_alias(const std::string& name);
     void clear_aliases();
+    void init_color_aliases();
+    void remove_color_aliases();
     const std::unordered_map<std::string, std::string>& get_aliases() const { return aliases_; }
 
     // Functions

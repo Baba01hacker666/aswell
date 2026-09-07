@@ -26,6 +26,8 @@ public:
                        Executor& executor,
                        ControlFlow& flow);
 
+    static int builtin_color(const std::vector<std::string>& args, Environment& env);
+
 private:
     static int builtin_cd(const std::vector<std::string>& args, Environment& env);
     static int builtin_pwd(const std::vector<std::string>& args, Environment& env);

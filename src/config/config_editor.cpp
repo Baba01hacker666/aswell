@@ -18,7 +18,7 @@ int ConfigEditor::run_interactive(Environment& env) {
     }
 
     int selected_item = 0;
-    const int total_items = 11; // 7 components + theme + anim + hl + autosugg
+    const int total_items = 12; // 7 components + theme + anim + hl + autosugg + colored_output
 
     PromptEngine preview_prompt(env);
 
@@ -60,6 +60,7 @@ int ConfigEditor::run_interactive(Environment& env) {
         render_toggle(8, "Prompt Animations", cfg.enable_animation);
         render_toggle(9, "Real-time Syntax Highlighting", cfg.enable_syntax_highlighting);
         render_toggle(10, "History Autosuggestions", cfg.enable_autosuggestions);
+        render_toggle(11, "Colored Command Outputs", cfg.enable_colored_output);
 
         // Render Live Preview
         std::cout << "\n  \033[1;33mLive Prompt Preview:\033[0m\n";
@@ -106,6 +107,7 @@ int ConfigEditor::run_interactive(Environment& env) {
                     case 8: cfg.enable_animation = !cfg.enable_animation; break;
                     case 9: cfg.enable_syntax_highlighting = !cfg.enable_syntax_highlighting; break;
                     case 10: cfg.enable_autosuggestions = !cfg.enable_autosuggestions; break;
+                    case 11: cfg.enable_colored_output = !cfg.enable_colored_output; break;
                 }
             } else if (c == 's' || c == 'S') {
                 ConfigManager::save(cfg);

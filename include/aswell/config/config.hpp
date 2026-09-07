@@ -18,6 +18,7 @@ struct ShellConfig {
     bool show_status = true;
     bool enable_command_animation = false;
     bool enable_command_banner = false;
+    bool enable_colored_output = true;
     bool vi_mode = false;
     std::string custom_template_html;
 };

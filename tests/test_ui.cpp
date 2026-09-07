@@ -28,6 +28,14 @@ void test_color_and_visual_width() {
     assert(!c.is_none);
     assert(c.r == 255 && c.g == 85 && c.b == 85);
 
+    Color c_bright = Color::from_name("bright-cyan");
+    assert(!c_bright.is_none);
+    assert(c_bright.r == 160 && c_bright.g == 245 && c_bright.b == 255);
+
+    Color c_256 = Color::parse("196");
+    assert(!c_256.is_none);
+    assert(c_256.r > 200 && c_256.g == 0 && c_256.b == 0); // Red in 256-color cube
+
     std::string ansi_colored = "\033[31mhello\033[0m world";
     assert(str_util::visual_width(ansi_colored) == 11);
     assert(str_util::strip_ansi(ansi_colored) == "hello world");

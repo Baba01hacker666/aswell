@@ -56,7 +56,7 @@ Customize your prompt, status indicators, and alerts using the styling concepts 
   - Asynchronous background jobs (`&`), job listings (`jobs`), foregrounding (`fg`), backgrounding (`bg`), and job reaping (`wait`).
   - Standard signals (`SIGINT`, `SIGTERM`, `SIGWINCH`, `SIGCHLD`) and signal traps (`trap`).
 - **Standard Builtin Suite**:
-  `cd`, `pwd`, `echo`, `printf`, `test`/`[`, `export`, `readonly`, `set`, `unset`, `eval`, `exec`, `read`, `source` / `.`, `type`, `kill`, `umask`, `alias`, `unalias`, `exit`, `true`, `false`, `aswell`.
+  `cd`, `pwd`, `echo`, `printf`, `color`, `test`/`[`, `export`, `readonly`, `set`, `unset`, `eval`, `exec`, `read`, `source` / `.`, `type`, `kill`, `umask`, `alias`, `unalias`, `exit`, `true`, `false`, `aswell`.
 
 ---
 
@@ -155,6 +155,39 @@ Launch the interactive configuration TUI anytime:
 aswell config
 ```
 Toggle prompt modules (Git, Status, Runtime, Jobs), choose active themes, and preview your prompt in real-time.
+
+---
+
+### 🌈 Colored Outputs & Styling in Commands
+Aswell brings first-class color output support directly to commands and scripts:
+- **`color` Builtin & `aswell color` Command**:
+  Easily output formatted and styled text without memorizing raw ANSI escape codes:
+  ```bash
+  # Named colors and 24-bit TrueColor hex
+  color red "Error: connection timed out"
+  color green --bold "Build succeeded!"
+  color --bg "#222222" "#00f0ff" "Cyberpunk neon text"
+
+  # Smooth gradients and rainbow spectrums
+  color gradient cyan magenta "Beautiful flowing status"
+  color rainbow "Vibrant rainbow text"
+
+  # Pipeline streaming from commands
+  cat app.log | color cyan
+  ls | color green
+
+  # Inspect available color palettes
+  color list
+  ```
+- **Enhanced `echo` and `printf` Escapes**:
+  Complete support for standard octal escapes (`\033`), hex escapes (`\x1b`), `\e`, and `%b` in `printf` and `echo -e`:
+  ```bash
+  echo -e "\033[31mRed Alert\033[0m"
+  printf "\033[1;32m%s\033[0m\n" "Success"
+  printf "%b\n" "\033[34mBlue via %b\033[0m"
+  ```
+- **Automatic Color for Interactive CLI Commands**:
+  Interactive shells export `COLORTERM=truecolor` and `CLICOLOR=1` and enable default color aliases (`ls --color=auto`, `grep --color=auto`, `diff --color=auto`, etc.) by default. Can be toggled in `aswell config` or `~/.config/aswell/config.txt` (`colored_output=true`).
 
 ---
 

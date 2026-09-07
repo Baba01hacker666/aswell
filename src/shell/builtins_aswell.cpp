@@ -13,7 +13,7 @@ namespace aswell {
 int Builtins::builtin_aswell(const std::vector<std::string>& args, Environment& env, Executor& /*executor*/) {
     if (args.size() <= 1) {
         std::cout << SHELL_BANNER << "\n"
-                  << "Type 'aswell help' for commands or 'aswell theme' to configure themes.\n";
+                  << "Type 'aswell help' for commands, 'aswell color' for colored output, or 'aswell theme' to configure themes.\n";
         return 0;
     }
 
@@ -25,6 +25,14 @@ int Builtins::builtin_aswell(const std::vector<std::string>& args, Environment& 
     if (sub == "help" || sub == "--help") {
         builtin_help(args);
         return 0;
+    }
+    if (sub == "color") {
+        std::vector<std::string> sub_args;
+        sub_args.push_back("color");
+        for (size_t i = 2; i < args.size(); ++i) {
+            sub_args.push_back(args[i]);
+        }
+        return builtin_color(sub_args, env);
     }
     if (sub == "theme") {
         if (args.size() == 2 || (args.size() == 3 && args[2] == "list")) {
@@ -235,6 +243,7 @@ int Builtins::builtin_aswell(const std::vector<std::string>& args, Environment& 
     if (sub == "ui") {
         std::cout << "\033[1;34mAswell Modern UI Status:\033[0m\n"
                   << "  * \033[1;32mPrompt Engine\033[0m    : HTML & CSS rendered\n"
+                  << "  * \033[1;32mColor Engine\033[0m     : 24-bit TrueColor, palettes, gradient, rainbow, and 'color' command\n"
                   << "  * \033[1;32mCustom Commands\033[0m  : First-class (~/.config/aswell/commands/)\n"
                   << "  * \033[1;32mRight Prompt\033[0m     : Supported via <rprompt> with column alignment\n"
                   << "  * \033[1;32mAutocomplete\033[0m     : Modern popup cards [CUSTOM, CMD, DIR, BUILT, ALIAS, FUNC]\n"

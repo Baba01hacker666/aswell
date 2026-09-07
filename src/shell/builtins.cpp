@@ -10,7 +10,7 @@ bool Builtins::is_builtin(const std::string& name) {
         "eval", "exec", "read", "source", ".", "shift", "trap",
         "type", "wait", "jobs", "fg", "bg", "kill", "hash",
         "umask", "local", "break", "continue", "return",
-        "true", "false", ":", "help", "history", "aswell"
+        "true", "false", ":", "help", "history", "aswell", "color"
     };
     return builtins.find(name) != builtins.end();
 }
@@ -56,6 +56,7 @@ int Builtins::execute(const std::string& name,
     if (name == "help") return builtin_help(args);
     if (name == "history") return builtin_history(args);
     if (name == "aswell") return builtin_aswell(args, env, executor);
+    if (name == "color") return builtin_color(args, env);
 
     return 1;
 }

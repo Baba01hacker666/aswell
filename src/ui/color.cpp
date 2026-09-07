@@ -78,7 +78,22 @@ Color Color::from_name(std::string_view name) {
         {"dracula-pink", Color(255, 121, 198)},
         {"dracula-purple", Color(189, 147, 249)},
         {"dracula-red", Color(255, 85, 85)},
-        {"dracula-yellow", Color(241, 250, 140)}
+        {"dracula-yellow", Color(241, 250, 140)},
+
+        // Bright ANSI colors
+        {"bright-black", Color(85, 85, 85)},
+        {"bright-red", Color(255, 110, 110)},
+        {"bright-green", Color(110, 255, 150)},
+        {"bright-yellow", Color(255, 255, 160)},
+        {"bright-blue", Color(130, 170, 255)},
+        {"bright-magenta", Color(255, 140, 220)},
+        {"bright-cyan", Color(160, 245, 255)},
+        {"bright-white", Color(255, 255, 255)},
+        {"bold-red", Color(255, 85, 85)},
+        {"bold-green", Color(80, 250, 123)},
+        {"bold-yellow", Color(241, 250, 140)},
+        {"bold-blue", Color(98, 114, 164)},
+        {"bold-cyan", Color(139, 233, 253)}
     };
 
     auto it = color_table.find(lower);
@@ -106,6 +121,44 @@ Color Color::parse(std::string_view str) {
             } catch (...) {}
         }
     }
+
+    // 256-color numeric index check
+    bool all_digits = true;
+    for (char c : str) {
+        if (!std::isdigit(static_cast<unsigned char>(c))) {
+            all_digits = false;
+            break;
+        }
+    }
+    if (all_digits && str.size() <= 3) {
+        try {
+            int code = std::stoi(std::string(str));
+            if (code >= 0 && code <= 255) {
+                if (code < 16) {
+                    static const Color ansi16[16] = {
+                        Color(0, 0, 0),       Color(170, 0, 0),     Color(0, 170, 0),     Color(170, 85, 0),
+                        Color(0, 0, 170),     Color(170, 0, 170),   Color(0, 170, 170),   Color(170, 170, 170),
+                        Color(85, 85, 85),    Color(255, 85, 85),   Color(85, 255, 85),   Color(255, 255, 85),
+                        Color(85, 85, 255),   Color(255, 85, 255),  Color(85, 255, 255),  Color(255, 255, 255)
+                    };
+                    return ansi16[code];
+                } else if (code < 232) {
+                    int c = code - 16;
+                    int b = c % 6;
+                    int g = (c / 6) % 6;
+                    int r = c / 36;
+                    uint8_t rv = r ? static_cast<uint8_t>(55 + r * 40) : 0;
+                    uint8_t gv = g ? static_cast<uint8_t>(55 + g * 40) : 0;
+                    uint8_t bv = b ? static_cast<uint8_t>(55 + b * 40) : 0;
+                    return Color(rv, gv, bv);
+                } else {
+                    uint8_t gray = static_cast<uint8_t>(8 + (code - 232) * 10);
+                    return Color(gray, gray, gray);
+                }
+            }
+        } catch (...) {}
+    }
+
     return from_name(str);
 }
 

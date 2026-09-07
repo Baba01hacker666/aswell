@@ -108,6 +108,69 @@ echo "5. Running Engine Animation & Demo Showcase Tests..."
 echo "[PASS] Engine animation demo passed"
 
 echo ""
+echo "6. Running Colored Outputs & Commands Tests..."
+
+# Test echo -e with octal (\033) and hex (\x1b) escape sequences
+OUT=$(./bin/aswell -c 'echo -e "\033[31mRed\033[0m \x1b[32mGreen\x1b[0m"')
+if ! echo "$OUT" | grep -q $'\033\[31mRed\033\[0m \033\[32mGreen\033\[0m'; then
+    echo "[FAIL] echo -e colored escape sequences failed: $OUT"
+    exit 1
+fi
+echo "[PASS] echo -e octal and hex ANSI color escape sequences"
+
+# Test printf with ANSI color escapes and %b
+OUT=$(./bin/aswell -c 'printf "\033[34m%s\033[0m %b\n" "Blue" "\033[33mYellow\033[0m"')
+if ! echo "$OUT" | grep -q $'\033\[34mBlue\033\[0m \033\[33mYellow\033\[0m'; then
+    echo "[FAIL] printf colored escape sequences failed: $OUT"
+    exit 1
+fi
+echo "[PASS] printf octal, hex, and %b format specifier"
+
+# Test color builtin with named colors, bold style, and hex
+OUT=$(./bin/aswell -c 'color --bold red "Critical Alert"')
+if ! echo "$OUT" | grep -q $'\033\[1m' || ! echo "$OUT" | grep -q "Critical Alert"; then
+    echo "[FAIL] color builtin failed: $OUT"
+    exit 1
+fi
+echo "[PASS] color builtin (bold, named colors, TrueColor)"
+
+# Test color gradient output
+OUT=$(./bin/aswell -c 'color gradient cyan magenta "Gradient Status"')
+if ! echo "$OUT" | grep -q $'\033\[38;2;'; then
+    echo "[FAIL] color gradient failed: $OUT"
+    exit 1
+fi
+echo "[PASS] color gradient text interpolation"
+
+# Test color rainbow output
+OUT=$(./bin/aswell -c 'color rainbow "Rainbow Spectrum"')
+if ! echo "$OUT" | grep -q $'\033\[38;2;'; then
+    echo "[FAIL] color rainbow failed: $OUT"
+    exit 1
+fi
+echo "[PASS] color rainbow output"
+
+# Test color piped input from stdin
+OUT=$(./bin/aswell -c 'printf "Line1\nLine2\n" | color green')
+if ! echo "$OUT" | grep -q $'\033\[38;2;80;250;123mLine1' || ! echo "$OUT" | grep -q $'\033\[38;2;80;250;123mLine2'; then
+    echo "[FAIL] color stdin pipeline failed: $OUT"
+    exit 1
+fi
+echo "[PASS] color pipeline streaming from stdin"
+
+# Test aswell color subcommand CLI interface
+OUT=$(./bin/aswell color --bg "#111111" "#00f0ff" "Cyberpunk Direct")
+if ! echo "$OUT" | grep -q "Cyberpunk Direct" || ! echo "$OUT" | grep -q $'\033\[38;2;0;240;255m'; then
+    echo "[FAIL] aswell color CLI command failed: $OUT"
+    exit 1
+fi
+echo "[PASS] aswell color CLI command"
+
+# Test color list palette overview
+./bin/aswell color list > /dev/null
+echo "[PASS] color list palette display"
+
+echo ""
 echo "=================================================="
 echo "       ALL ASWELL TESTS PASSED SUCCESSFULLY!      "
 echo "=================================================="
