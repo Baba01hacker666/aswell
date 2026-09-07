@@ -336,6 +336,23 @@ int main(int argc, char* argv[]) {
             continue;
         }
 
+        // History expansion (!csh/bash-style)
+        if (line.find('!') != std::string::npos) {
+            editor.history().pop_last();
+            std::string hist_err;
+            auto expanded_opt = editor.history().expand_history(line, hist_err);
+            if (!expanded_opt.has_value()) {
+                std::cerr << "aswell: " << hist_err << "\n";
+                env.last_exit_status = 1;
+                continue;
+            }
+            line = *expanded_opt;
+            editor.history().add(line);
+            if (line != *line_opt) {
+                std::cout << line << "\n";
+            }
+        }
+
         hooks.trigger_hook(HookType::BEFORE_COMMAND, {line});
         TemplateEngine::handle_event(line, Terminal::is_interactive_tty());
         int status = executor.execute_string(line);

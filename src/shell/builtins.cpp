@@ -10,7 +10,8 @@ bool Builtins::is_builtin(const std::string& name) {
         "eval", "exec", "read", "source", ".", "shift", "trap",
         "type", "wait", "jobs", "fg", "bg", "kill", "hash",
         "umask", "local", "break", "continue", "return",
-        "true", "false", ":", "help", "history", "aswell", "color"
+        "true", "false", ":", "help", "history", "aswell", "color",
+        "dirs", "pushd", "popd", "command"
     };
     return builtins.find(name) != builtins.end();
 }
@@ -23,6 +24,10 @@ int Builtins::execute(const std::string& name,
                       ControlFlow& flow) {
     if (name == "cd") return builtin_cd(args, env);
     if (name == "pwd") return builtin_pwd(args, env);
+    if (name == "dirs") return builtin_dirs(args, env);
+    if (name == "pushd") return builtin_pushd(args, env);
+    if (name == "popd") return builtin_popd(args, env);
+    if (name == "command") return builtin_command(args, env, jobs, executor, flow);
     if (name == "echo") return builtin_echo(args, env);
     if (name == "printf") return builtin_printf(args, env);
     if (name == "test" || name == "[") return builtin_test(args, env);

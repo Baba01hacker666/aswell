@@ -56,7 +56,9 @@ Customize your prompt, status indicators, and alerts using the styling concepts 
   - Asynchronous background jobs (`&`), job listings (`jobs`), foregrounding (`fg`), backgrounding (`bg`), and job reaping (`wait`).
   - Standard signals (`SIGINT`, `SIGTERM`, `SIGWINCH`, `SIGCHLD`) and signal traps (`trap`).
 - **Standard Builtin Suite**:
-  `cd`, `pwd`, `echo`, `printf`, `color`, `test`/`[`, `export`, `readonly`, `set`, `unset`, `eval`, `exec`, `read`, `source` / `.`, `type`, `kill`, `umask`, `alias`, `unalias`, `exit`, `true`, `false`, `aswell`.
+  `cd`, `pwd`, `dirs`, `pushd`, `popd`, `command`, `echo`, `printf`, `color`, `test`/`[`, `export`, `readonly`, `set`, `unset`, `eval`, `exec`, `read`, `source` / `.`, `type`, `kill`, `umask`, `alias`, `unalias`, `exit`, `history`, `true`, `false`, `aswell`.
+- **Advanced Expansion Pipeline**:
+  Full 7-stage POSIX expansion with **Brace Expansion** (`{a,b,c}`, `{1..10}`, `{01..05}`, `{a..z}`, nested braces, Cartesian products) and **Interactive History Expansion** (`!!`, `!$`, `!^`, `!*`, `!-n`, `!n`, `!prefix`, `!?str`).
 
 ---
 

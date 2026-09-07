@@ -61,11 +61,67 @@ void test_quote_removal() {
     std::cout << "[PASS] test_quote_removal\n";
 }
 
+void test_brace_expansion() {
+    Environment env;
+    Expansion exp(env);
+
+    // Simple comma expansion
+    auto res1 = exp.expand_braces("{a,b,c}");
+    assert((res1 == std::vector<std::string>{"a", "b", "c"}));
+
+    // Prefix and suffix
+    auto res2 = exp.expand_braces("pre_{a,b}_post");
+    assert((res2 == std::vector<std::string>{"pre_a_post", "pre_b_post"}));
+
+    // Numeric range
+    auto res3 = exp.expand_braces("{1..5}");
+    assert((res3 == std::vector<std::string>{"1", "2", "3", "4", "5"}));
+
+    // Reverse numeric range
+    auto res4 = exp.expand_braces("{3..1}");
+    assert((res4 == std::vector<std::string>{"3", "2", "1"}));
+
+    // Zero-padded range
+    auto res5 = exp.expand_braces("{01..05}");
+    assert((res5 == std::vector<std::string>{"01", "02", "03", "04", "05"}));
+
+    // Step range
+    auto res6 = exp.expand_braces("{1..9..2}");
+    assert((res6 == std::vector<std::string>{"1", "3", "5", "7", "9"}));
+
+    // Char range
+    auto res7 = exp.expand_braces("{a..e}");
+    assert((res7 == std::vector<std::string>{"a", "b", "c", "d", "e"}));
+
+    // Cartesian product
+    auto res8 = exp.expand_braces("{1,2}_{3,4}");
+    assert((res8 == std::vector<std::string>{"1_3", "1_4", "2_3", "2_4"}));
+
+    // Nested braces
+    auto res9 = exp.expand_braces("a{b,c{1,2}}d");
+    assert((res9 == std::vector<std::string>{"abd", "ac1d", "ac2d"}));
+
+    // Non-expandable braces
+    auto res10 = exp.expand_braces("{foo}");
+    assert((res10 == std::vector<std::string>{"{foo}"}));
+
+    // Quoted braces preserved as-is
+    auto res11 = exp.expand_braces("\"{a,b}\"");
+    assert((res11 == std::vector<std::string>{"\"{a,b}\""}));
+
+    // Full expand_words integration
+    auto full = exp.expand_words({"echo", "file_{1..3}.txt"});
+    assert((full == std::vector<std::string>{"echo", "file_1.txt", "file_2.txt", "file_3.txt"}));
+
+    std::cout << "[PASS] test_brace_expansion\n";
+}
+
 int main() {
     std::cout << "--- Running Expansion Tests ---\n";
     test_parameter_expansions();
     test_arithmetic_expansion();
     test_quote_removal();
+    test_brace_expansion();
     std::cout << "All Expansion Tests Passed!\n";
     return 0;
 }

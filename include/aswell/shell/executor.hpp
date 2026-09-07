@@ -40,6 +40,7 @@ public:
     int execute_function_def(FunctionDefNode& cmd, ControlFlow& flow);
     int execute_function_call(FunctionDefNode& func, const std::vector<std::string>& args, ControlFlow& flow);
     int execute_function(const std::string& name, const std::vector<std::string>& args);
+    int execute_external(const std::string& executable_path, const std::vector<std::string>& args);
 
     std::string evaluate_command_substitution(const std::string& script);
 

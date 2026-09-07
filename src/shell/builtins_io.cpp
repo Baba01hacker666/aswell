@@ -1,4 +1,5 @@
 #include "aswell/shell/builtins.hpp"
+#include "aswell/shell/executor.hpp"
 #include "aswell/ui/color.hpp"
 #include "aswell/ui/template_engine.hpp"
 #include <iostream>
@@ -241,6 +242,295 @@ int Builtins::builtin_pwd(const std::vector<std::string>& args, Environment& env
         return 0;
     }
     return 1;
+}
+
+static std::string format_dir_for_display(const std::string& path, const std::string& home) {
+    if (home.empty() || home == "/") return path;
+    if (path == home) return "~";
+    if (path.rfind(home + "/", 0) == 0) {
+        return "~" + path.substr(home.size());
+    }
+    return path;
+}
+
+int Builtins::builtin_dirs(const std::vector<std::string>& args, Environment& env) {
+    bool clear = false;
+    bool per_line = false;
+    bool verbose = false;
+    int show_index = -1;
+
+    for (size_t i = 1; i < args.size(); ++i) {
+        const std::string& arg = args[i];
+        if (arg == "-c") {
+            clear = true;
+        } else if (arg == "-p") {
+            per_line = true;
+        } else if (arg == "-v") {
+            verbose = true;
+        } else if (arg.size() > 1 && arg[0] == '+') {
+            try {
+                show_index = std::stoi(arg.substr(1));
+            } catch (...) {
+                std::cerr << "aswell: dirs: " << arg << ": invalid number\n";
+                return 1;
+            }
+        } else {
+            std::cerr << "aswell: dirs: " << arg << ": invalid option\n";
+            return 1;
+        }
+    }
+
+    if (clear) {
+        env.clear_dir_stack();
+        return 0;
+    }
+
+    std::string home = env.get_var("HOME");
+    std::string pwd = env.get_var("PWD");
+    if (pwd.empty()) {
+        char buf[4096];
+        if (getcwd(buf, sizeof(buf))) pwd = buf;
+    }
+
+    std::vector<std::string> all_dirs;
+    all_dirs.push_back(pwd);
+    const auto& stack = env.get_dir_stack();
+    all_dirs.insert(all_dirs.end(), stack.begin(), stack.end());
+
+    if (show_index >= 0) {
+        if (static_cast<size_t>(show_index) >= all_dirs.size()) {
+            std::cerr << "aswell: dirs: +" << show_index << ": directory stack index out of range\n";
+            return 1;
+        }
+        std::cout << format_dir_for_display(all_dirs[show_index], home) << "\n";
+        return 0;
+    }
+
+    if (verbose) {
+        for (size_t i = 0; i < all_dirs.size(); ++i) {
+            std::cout << std::setw(2) << i << "  " << format_dir_for_display(all_dirs[i], home) << "\n";
+        }
+    } else if (per_line) {
+        for (const auto& d : all_dirs) {
+            std::cout << format_dir_for_display(d, home) << "\n";
+        }
+    } else {
+        for (size_t i = 0; i < all_dirs.size(); ++i) {
+            if (i > 0) std::cout << " ";
+            std::cout << format_dir_for_display(all_dirs[i], home);
+        }
+        std::cout << "\n";
+    }
+
+    return 0;
+}
+
+int Builtins::builtin_pushd(const std::vector<std::string>& args, Environment& env) {
+    auto& stack = env.get_dir_stack();
+    std::string cur_pwd = env.get_var("PWD");
+    if (cur_pwd.empty()) {
+        char buf[4096];
+        if (getcwd(buf, sizeof(buf))) cur_pwd = buf;
+    }
+
+    if (args.size() == 1) {
+        if (stack.empty()) {
+            std::cerr << "aswell: pushd: no other directory\n";
+            return 1;
+        }
+        std::string target = stack.front();
+        int ret = builtin_cd({"cd", target}, env);
+        if (ret == 0) {
+            stack[0] = cur_pwd;
+            return builtin_dirs({"dirs"}, env);
+        }
+        return ret;
+    }
+
+    const std::string& arg = args[1];
+    if (arg.size() > 1 && arg[0] == '+') {
+        int n = 0;
+        try {
+            n = std::stoi(arg.substr(1));
+        } catch (...) {
+            std::cerr << "aswell: pushd: " << arg << ": invalid number\n";
+            return 1;
+        }
+        size_t total = 1 + stack.size();
+        if (static_cast<size_t>(n) >= total) {
+            std::cerr << "aswell: pushd: +" << n << ": directory stack index out of range\n";
+            return 1;
+        }
+        if (n == 0) {
+            return builtin_dirs({"dirs"}, env);
+        }
+        std::vector<std::string> all_dirs;
+        all_dirs.push_back(cur_pwd);
+        all_dirs.insert(all_dirs.end(), stack.begin(), stack.end());
+
+        std::rotate(all_dirs.begin(), all_dirs.begin() + n, all_dirs.end());
+        std::string new_pwd = all_dirs[0];
+        int ret = builtin_cd({"cd", new_pwd}, env);
+        if (ret == 0) {
+            all_dirs.erase(all_dirs.begin());
+            env.set_dir_stack(all_dirs);
+            return builtin_dirs({"dirs"}, env);
+        }
+        return ret;
+    }
+
+    std::string target = arg;
+    int ret = builtin_cd({"cd", target}, env);
+    if (ret == 0) {
+        env.push_dir(cur_pwd);
+        return builtin_dirs({"dirs"}, env);
+    }
+    return ret;
+}
+
+int Builtins::builtin_popd(const std::vector<std::string>& args, Environment& env) {
+    auto& stack = env.get_dir_stack();
+    if (stack.empty() && args.size() <= 1) {
+        std::cerr << "aswell: popd: directory stack empty\n";
+        return 1;
+    }
+
+    if (args.size() > 1) {
+        const std::string& arg = args[1];
+        if (arg.size() > 1 && arg[0] == '+') {
+            int n = 0;
+            try {
+                n = std::stoi(arg.substr(1));
+            } catch (...) {
+                std::cerr << "aswell: popd: " << arg << ": invalid number\n";
+                return 1;
+            }
+            size_t total = 1 + stack.size();
+            if (static_cast<size_t>(n) >= total) {
+                std::cerr << "aswell: popd: +" << n << ": directory stack index out of range\n";
+                return 1;
+            }
+            if (n == 0) {
+                std::string target = stack.front();
+                stack.erase(stack.begin());
+                int ret = builtin_cd({"cd", target}, env);
+                if (ret == 0) {
+                    return builtin_dirs({"dirs"}, env);
+                }
+                return ret;
+            } else {
+                stack.erase(stack.begin() + (n - 1));
+                return builtin_dirs({"dirs"}, env);
+            }
+        } else {
+            std::cerr << "aswell: popd: " << arg << ": invalid option\n";
+            return 1;
+        }
+    }
+
+    std::string target = stack.front();
+    stack.erase(stack.begin());
+    int ret = builtin_cd({"cd", target}, env);
+    if (ret == 0) {
+        return builtin_dirs({"dirs"}, env);
+    }
+    return ret;
+}
+
+int Builtins::builtin_command(const std::vector<std::string>& args,
+                             Environment& env,
+                             JobManager& jobs,
+                             Executor& executor,
+                             ControlFlow& flow) {
+    bool use_default_path = false;
+    bool opt_v = false;
+    bool opt_V = false;
+
+    size_t i = 1;
+    while (i < args.size() && args[i].size() > 1 && args[i][0] == '-' && args[i] != "--") {
+        const std::string& opt = args[i];
+        for (size_t c = 1; c < opt.size(); ++c) {
+            if (opt[c] == 'p') {
+                use_default_path = true;
+            } else if (opt[c] == 'v') {
+                opt_v = true;
+            } else if (opt[c] == 'V') {
+                opt_V = true;
+            } else {
+                std::cerr << "aswell: command: -" << opt[c] << ": invalid option\n";
+                return 1;
+            }
+        }
+        i++;
+    }
+    if (i < args.size() && args[i] == "--") {
+        i++;
+    }
+
+    if (i >= args.size()) {
+        return 0;
+    }
+
+    std::string cmd_name = args[i];
+    std::string override_path = use_default_path ? "/bin:/usr/bin:/usr/local/bin:/sbin:/usr/sbin" : "";
+
+    if (opt_v) {
+        std::string alias_val;
+        if (env.get_alias(cmd_name, alias_val)) {
+            std::cout << "alias " << cmd_name << "='" << alias_val << "'\n";
+            return 0;
+        }
+        if (Builtins::is_builtin(cmd_name)) {
+            std::cout << cmd_name << "\n";
+            return 0;
+        }
+        if (env.has_function(cmd_name)) {
+            std::cout << cmd_name << "\n";
+            return 0;
+        }
+        std::string full_path = env.find_in_path(cmd_name, override_path);
+        if (!full_path.empty()) {
+            std::cout << full_path << "\n";
+            return 0;
+        }
+        return 1;
+    }
+
+    if (opt_V) {
+        std::string alias_val;
+        if (env.get_alias(cmd_name, alias_val)) {
+            std::cout << cmd_name << " is aliased to `" << alias_val << "'\n";
+            return 0;
+        }
+        if (Builtins::is_builtin(cmd_name)) {
+            std::cout << cmd_name << " is a shell builtin\n";
+            return 0;
+        }
+        if (env.has_function(cmd_name)) {
+            std::cout << cmd_name << " is a function\n";
+            return 0;
+        }
+        std::string full_path = env.find_in_path(cmd_name, override_path);
+        if (!full_path.empty()) {
+            std::cout << cmd_name << " is " << full_path << "\n";
+            return 0;
+        }
+        std::cerr << "aswell: command: " << cmd_name << ": not found\n";
+        return 1;
+    }
+
+    std::vector<std::string> sub_args(args.begin() + i, args.end());
+    if (cmd_name != "command" && Builtins::is_builtin(cmd_name)) {
+        return Builtins::execute(cmd_name, sub_args, env, jobs, executor, flow);
+    }
+
+    std::string executable_path = env.find_in_path(cmd_name, override_path);
+    if (executable_path.empty()) {
+        std::cerr << "aswell: " << cmd_name << ": command not found\n";
+        return 127;
+    }
+
+    return executor.execute_external(executable_path, sub_args);
 }
 
 int Builtins::builtin_echo(const std::vector<std::string>& args, Environment& /*env*/) {

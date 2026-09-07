@@ -208,6 +208,8 @@ bool Executor::apply_redirections(const std::vector<Redirection>& redirs, std::v
 }
 
 void Executor::restore_redirections(std::vector<SavedRedirection>& saved) {
+    std::cout.flush();
+    std::cerr.flush();
     for (auto it = saved.rbegin(); it != saved.rend(); ++it) {
         dup2(it->backup_fd, it->original_fd);
         close(it->backup_fd);
@@ -531,6 +533,43 @@ int Executor::execute_simple_command(SimpleCommandNode& cmd, ControlFlow& flow) 
     }
 
     // Parent
+    int status = 0;
+    waitpid(pid, &status, 0);
+    return WIFEXITED(status) ? WEXITSTATUS(status) : (128 + WTERMSIG(status));
+}
+
+int Executor::execute_external(const std::string& executable_path, const std::vector<std::string>& args) {
+    pid_t pid = fork();
+    if (pid < 0) {
+        std::cerr << "aswell: fork failed: " << std::strerror(errno) << "\n";
+        return 1;
+    }
+
+    if (pid == 0) {
+        SignalManager::reset_signals_for_child();
+
+        std::vector<char*> argv;
+        for (const auto& w : args) {
+            argv.push_back(const_cast<char*>(w.c_str()));
+        }
+        argv.push_back(nullptr);
+
+        execve(executable_path.c_str(), argv.data(), env_.get_envp().data());
+        if (errno == ENOEXEC || errno == EACCES) {
+            std::vector<char*> sh_argv;
+            std::string sh_bin = "/bin/sh";
+            sh_argv.push_back(const_cast<char*>(sh_bin.c_str()));
+            sh_argv.push_back(const_cast<char*>(executable_path.c_str()));
+            for (size_t i = 1; i < args.size(); ++i) {
+                sh_argv.push_back(const_cast<char*>(args[i].c_str()));
+            }
+            sh_argv.push_back(nullptr);
+            execve(sh_bin.c_str(), sh_argv.data(), env_.get_envp().data());
+        }
+        std::cerr << "aswell: " << executable_path << ": " << std::strerror(errno) << "\n";
+        _exit(126);
+    }
+
     int status = 0;
     waitpid(pid, &status, 0);
     return WIFEXITED(status) ? WEXITSTATUS(status) : (128 + WTERMSIG(status));

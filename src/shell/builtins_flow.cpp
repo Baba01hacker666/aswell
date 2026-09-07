@@ -179,17 +179,70 @@ int Builtins::builtin_umask(const std::vector<std::string>& args, Environment& /
     return 0;
 }
 
-int Builtins::builtin_history(const std::vector<std::string>& /*args*/) {
+int Builtins::builtin_history(const std::vector<std::string>& args) {
     std::string hist_file = std::string(getenv("HOME") ? getenv("HOME") : "") + "/.aswell_history";
+
+    if (args.size() > 1 && args[1] == "-c") {
+        std::ofstream file(hist_file, std::ios::trunc);
+        return 0;
+    }
+
+    if (args.size() > 1 && args[1] == "-d") {
+        if (args.size() < 3) {
+            std::cerr << "aswell: history: -d: option requires an argument\n";
+            return 1;
+        }
+        int del_idx = 0;
+        try {
+            del_idx = std::stoi(args[2]);
+        } catch (...) {
+            std::cerr << "aswell: history: " << args[2] << ": history position out of range\n";
+            return 1;
+        }
+        std::ifstream file(hist_file);
+        if (!file) return 0;
+        std::vector<std::string> lines;
+        std::string line;
+        while (std::getline(file, line)) {
+            if (!line.empty()) lines.push_back(line);
+        }
+        if (del_idx <= 0 || static_cast<size_t>(del_idx) > lines.size()) {
+            std::cerr << "aswell: history: " << del_idx << ": history position out of range\n";
+            return 1;
+        }
+        lines.erase(lines.begin() + (del_idx - 1));
+        std::ofstream out(hist_file, std::ios::trunc);
+        for (const auto& l : lines) {
+            out << l << "\n";
+        }
+        return 0;
+    }
+
     std::ifstream file(hist_file);
     if (!file) return 0;
 
+    std::vector<std::string> lines;
     std::string line;
-    int idx = 1;
     while (std::getline(file, line)) {
         if (!line.empty()) {
-            std::cout << std::setw(5) << idx++ << "  " << line << "\n";
+            lines.push_back(line);
         }
+    }
+
+    size_t start = 0;
+    if (args.size() > 1) {
+        try {
+            int n = std::stoi(args[1]);
+            if (n > 0 && static_cast<size_t>(n) < lines.size()) {
+                start = lines.size() - static_cast<size_t>(n);
+            }
+        } catch (...) {
+            // Not a number, ignore
+        }
+    }
+
+    for (size_t i = start; i < lines.size(); ++i) {
+        std::cout << std::setw(5) << (i + 1) << "  " << lines[i] << "\n";
     }
     return 0;
 }

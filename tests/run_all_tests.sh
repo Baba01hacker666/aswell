@@ -18,6 +18,7 @@ $CXX $CXXFLAGS -Iinclude tests/test_parser.cpp src/shell/lexer.o src/shell/parse
 $CXX $CXXFLAGS -Iinclude tests/test_expansion.cpp src/shell/expansion.o src/shell/environment.o src/shell/signals.o -o bin/test_expansion $LDFLAGS
 $CXX $CXXFLAGS -Iinclude tests/test_css.cpp src/ui/css_parser.o src/ui/color.o -o bin/test_css $LDFLAGS
 $CXX $CXXFLAGS -Iinclude tests/test_ui.cpp src/ui/dom.o src/ui/layout.o src/ui/render.o src/ui/color.o src/ui/animation.o src/ui/css_parser.o src/ui/prompt.o src/ui/terminal.o src/ui/template_engine.o src/shell/environment.o -o bin/test_ui $LDFLAGS
+$CXX $CXXFLAGS -Iinclude tests/test_history.cpp src/editor/history.o -o bin/test_history $LDFLAGS
 
 echo "2. Running Unit Tests..."
 ./bin/test_lexer
@@ -25,6 +26,7 @@ echo "2. Running Unit Tests..."
 ./bin/test_expansion
 ./bin/test_css
 ./bin/test_ui
+./bin/test_history
 
 echo ""
 echo "3. Running POSIX Compatibility Script Suite..."
@@ -169,6 +171,69 @@ echo "[PASS] aswell color CLI command"
 # Test color list palette overview
 ./bin/aswell color list > /dev/null
 echo "[PASS] color list palette display"
+
+# Test brace expansion in command line execution
+OUT=$(./bin/aswell -c 'echo {a,b}_{1,2}')
+if [ "$OUT" != "a_1 a_2 b_1 b_2" ]; then
+    echo "[FAIL] Brace Cartesian expansion mismatch: $OUT"
+    exit 1
+fi
+OUT=$(./bin/aswell -c 'echo {01..05}')
+if [ "$OUT" != "01 02 03 04 05" ]; then
+    echo "[FAIL] Brace zero-padded range mismatch: $OUT"
+    exit 1
+fi
+OUT=$(./bin/aswell -c 'echo a{b,c{1,2}}d')
+if [ "$OUT" != "abd ac1d ac2d" ]; then
+    echo "[FAIL] Nested brace expansion mismatch: $OUT"
+    exit 1
+fi
+echo "[PASS] Brace expansion ({a,b}_{1,2}, {01..05}, a{b,c{1,2}}d)"
+
+# Test directory stack (dirs, pushd, popd, options)
+./bin/aswell -c 'dirs -c; pushd /tmp >/dev/null; dirs > /tmp/dirs_out.txt; popd >/dev/null; dirs >> /tmp/dirs_out.txt'
+if ! grep -q "^/tmp " /tmp/dirs_out.txt; then
+    echo "[FAIL] Directory stack pushd/popd failed"
+    exit 1
+fi
+OUT=$(./bin/aswell -c 'dirs -c; pushd /tmp >/dev/null; pushd /var >/dev/null; dirs -v')
+if ! echo "$OUT" | grep -q " 0  /var" || ! echo "$OUT" | grep -q " 1  /tmp"; then
+    echo "[FAIL] dirs -v output mismatch: $OUT"
+    exit 1
+fi
+echo "[PASS] Directory stack builtins (pushd, popd, dirs [-c|-v|-p])"
+
+# Test command builtin bypassing functions and displaying info
+OUT=$(./bin/aswell -c 'ls() { echo "func_override"; }; ls; command ls -d /tmp')
+if ! echo "$OUT" | grep -q "func_override" || ! echo "$OUT" | grep -q "^/tmp"; then
+    echo "[FAIL] command builtin function bypass failed: $OUT"
+    exit 1
+fi
+OUT=$(./bin/aswell -c 'command -v cd; command -v ls')
+if ! echo "$OUT" | grep -q "^cd" || ! echo "$OUT" | grep -q "ls"; then
+    echo "[FAIL] command -v output mismatch: $OUT"
+    exit 1
+fi
+OUT=$(./bin/aswell -c 'command -V cd')
+if ! echo "$OUT" | grep -q "builtin"; then
+    echo "[FAIL] command -V output mismatch: $OUT"
+    exit 1
+fi
+OUT=$(./bin/aswell -c 'command -p -v ls')
+if [ "$OUT" != "/bin/ls" ]; then
+    echo "[FAIL] command -p -v ls mismatch: $OUT"
+    exit 1
+fi
+echo "[PASS] command builtin (bypassing functions, -v, -V, -p)"
+
+# Test history builtin
+./bin/aswell -c 'history -c'
+OUT=$(./bin/aswell -c 'history')
+if [ -n "$OUT" ]; then
+    echo "[FAIL] history -c did not clear history"
+    exit 1
+fi
+echo "[PASS] history builtin (-c clear and management)"
 
 echo ""
 echo "=================================================="

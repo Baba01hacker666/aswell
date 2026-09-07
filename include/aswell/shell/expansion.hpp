@@ -15,6 +15,9 @@ public:
     // Full POSIX expansion of a word list into arguments
     std::vector<std::string> expand_words(const std::vector<std::string>& words);
 
+    // Brace expansion (Stage 0): {a,b,c}, {1..10}, {01..05}, {a..z}
+    std::vector<std::string> expand_braces(const std::string& word);
+
     // Expand a single word without word splitting or globbing (e.g. for variable assignment, case word)
     std::string expand_word_single(const std::string& word);
 

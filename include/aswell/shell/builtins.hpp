@@ -62,6 +62,14 @@ private:
     static int builtin_help(const std::vector<std::string>& args);
     static int builtin_history(const std::vector<std::string>& args);
     static int builtin_aswell(const std::vector<std::string>& args, Environment& env, Executor& executor);
+    static int builtin_dirs(const std::vector<std::string>& args, Environment& env);
+    static int builtin_pushd(const std::vector<std::string>& args, Environment& env);
+    static int builtin_popd(const std::vector<std::string>& args, Environment& env);
+    static int builtin_command(const std::vector<std::string>& args,
+                               Environment& env,
+                               JobManager& jobs,
+                               Executor& executor,
+                               ControlFlow& flow);
 };
 
 } // namespace aswell

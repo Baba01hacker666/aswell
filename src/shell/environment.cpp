@@ -385,7 +385,7 @@ void Environment::remove_trap(int signum) {
     traps_.erase(signum);
 }
 
-std::string Environment::find_in_path(const std::string& cmd) const {
+std::string Environment::find_in_path(const std::string& cmd, const std::string& override_path) const {
     if (cmd.find('/') != std::string::npos) {
         if (access(cmd.c_str(), X_OK) == 0) {
             return cmd;
@@ -393,7 +393,7 @@ std::string Environment::find_in_path(const std::string& cmd) const {
         return "";
     }
 
-    std::string path_var = get_var("PATH");
+    std::string path_var = override_path.empty() ? get_var("PATH") : override_path;
     auto paths = str_util::split(path_var, ':');
     for (const auto& p : paths) {
         std::string full_path = p.empty() ? cmd : (p + "/" + cmd);

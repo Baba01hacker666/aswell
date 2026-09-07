@@ -3,10 +3,125 @@
 #include <glob.h>
 #include <pwd.h>
 #include <cmath>
+#include <iomanip>
 
 namespace aswell {
 
 namespace {
+
+bool is_valid_integer_str(const std::string& s) {
+    if (s.empty()) return false;
+    size_t i = 0;
+    if (s[0] == '+' || s[0] == '-') {
+        i = 1;
+    }
+    if (i >= s.size()) return false;
+    for (; i < s.size(); ++i) {
+        if (!std::isdigit(static_cast<unsigned char>(s[i]))) return false;
+    }
+    return true;
+}
+
+bool parse_brace_range(const std::string& inner, std::vector<std::string>& items) {
+    size_t dot1 = inner.find("..");
+    if (dot1 == std::string::npos || dot1 == 0) return false;
+    std::string part1 = inner.substr(0, dot1);
+    size_t dot2 = inner.find("..", dot1 + 2);
+    std::string part2, part3;
+    if (dot2 != std::string::npos) {
+        part2 = inner.substr(dot1 + 2, dot2 - (dot1 + 2));
+        part3 = inner.substr(dot2 + 2);
+        if (part3.find("..") != std::string::npos) return false;
+    } else {
+        part2 = inner.substr(dot1 + 2);
+    }
+    if (part2.empty()) return false;
+
+    // Check numeric range
+    if (is_valid_integer_str(part1) && is_valid_integer_str(part2) && (part3.empty() || is_valid_integer_str(part3))) {
+        long long start_val = 0;
+        long long end_val = 0;
+        long long step_val = 1;
+        try {
+            start_val = std::stoll(part1);
+            end_val = std::stoll(part2);
+            if (!part3.empty()) {
+                step_val = std::stoll(part3);
+            }
+        } catch (...) {
+            return false;
+        }
+        if (step_val <= 0) step_val = 1;
+
+        bool pad = (part1.size() > 1 && (part1[0] == '0' || (part1[0] == '-' && part1[1] == '0'))) ||
+                   (part2.size() > 1 && (part2[0] == '0' || (part2[0] == '-' && part2[1] == '0')));
+        size_t width = std::max(part1.size(), part2.size());
+
+        if (start_val <= end_val) {
+            for (long long v = start_val; v <= end_val; v += step_val) {
+                if (pad) {
+                    std::ostringstream ss;
+                    if (v < 0) {
+                        size_t num_w = (width > 1) ? (width - 1) : 1;
+                        ss << "-" << std::setw(num_w) << std::setfill('0') << -v;
+                    } else {
+                        ss << std::setw(width) << std::setfill('0') << v;
+                    }
+                    items.push_back(ss.str());
+                } else {
+                    items.push_back(std::to_string(v));
+                }
+            }
+        } else {
+            for (long long v = start_val; v >= end_val; v -= step_val) {
+                if (pad) {
+                    std::ostringstream ss;
+                    if (v < 0) {
+                        size_t num_w = (width > 1) ? (width - 1) : 1;
+                        ss << "-" << std::setw(num_w) << std::setfill('0') << -v;
+                    } else {
+                        ss << std::setw(width) << std::setfill('0') << v;
+                    }
+                    items.push_back(ss.str());
+                } else {
+                    items.push_back(std::to_string(v));
+                }
+            }
+        }
+        return true;
+    }
+
+    // Check char range
+    if (part1.size() == 1 && part2.size() == 1 && (part3.empty() || is_valid_integer_str(part3))) {
+        char c1 = part1[0];
+        char c2 = part2[0];
+        if ((std::islower(static_cast<unsigned char>(c1)) && std::islower(static_cast<unsigned char>(c2))) ||
+            (std::isupper(static_cast<unsigned char>(c1)) && std::isupper(static_cast<unsigned char>(c2)))) {
+            int step = 1;
+            if (!part3.empty()) {
+                try {
+                    step = std::stoi(part3);
+                } catch (...) {
+                    return false;
+                }
+            }
+            if (step <= 0) step = 1;
+
+            if (c1 <= c2) {
+                for (int c = c1; c <= c2; c += step) {
+                    items.push_back(std::string(1, static_cast<char>(c)));
+                }
+            } else {
+                for (int c = c1; c >= c2; c -= step) {
+                    items.push_back(std::string(1, static_cast<char>(c)));
+                }
+            }
+            return true;
+        }
+    }
+
+    return false;
+}
 
 // Arithmetic expression parser
 class ArithmeticParser {
@@ -799,10 +914,167 @@ std::string Expansion::expand_word_single(const std::string& word) {
     return remove_quotes(param_expanded);
 }
 
+std::vector<std::string> Expansion::expand_braces(const std::string& word) {
+    size_t n = word.size();
+    size_t i = 0;
+
+    while (i < n) {
+        char c = word[i];
+        if (c == '\\') {
+            i += 2;
+            continue;
+        }
+        if (c == '\'') {
+            i++;
+            while (i < n && word[i] != '\'') i++;
+            if (i < n) i++;
+            continue;
+        }
+        if (c == '"') {
+            i++;
+            while (i < n && word[i] != '"') {
+                if (word[i] == '\\' && i + 1 < n) i += 2;
+                else i++;
+            }
+            if (i < n) i++;
+            continue;
+        }
+        if (c == '$' && i + 1 < n) {
+            if (word[i + 1] == '{') {
+                i += 2;
+                int bdepth = 1;
+                while (i < n && bdepth > 0) {
+                    if (word[i] == '\\' && i + 1 < n) i += 2;
+                    else {
+                        if (word[i] == '{') bdepth++;
+                        else if (word[i] == '}') bdepth--;
+                        i++;
+                    }
+                }
+                continue;
+            } else if (word[i + 1] == '(') {
+                i += 2;
+                int pdepth = 1;
+                while (i < n && pdepth > 0) {
+                    if (word[i] == '\\' && i + 1 < n) i += 2;
+                    else {
+                        if (word[i] == '(') pdepth++;
+                        else if (word[i] == ')') pdepth--;
+                        i++;
+                    }
+                }
+                continue;
+            }
+        }
+
+        if (c == '{') {
+            size_t open_pos = i;
+            size_t j = i + 1;
+            int depth = 0;
+            std::vector<size_t> comma_positions;
+            bool found_close = false;
+
+            while (j < n) {
+                if (word[j] == '\\') {
+                    j += 2;
+                    continue;
+                }
+                if (word[j] == '\'') {
+                    j++;
+                    while (j < n && word[j] != '\'') j++;
+                    if (j < n) j++;
+                    continue;
+                }
+                if (word[j] == '"') {
+                    j++;
+                    while (j < n && word[j] != '"') {
+                        if (word[j] == '\\' && j + 1 < n) j += 2;
+                        else j++;
+                    }
+                    if (j < n) j++;
+                    continue;
+                }
+                if (word[j] == '$' && j + 1 < n && word[j + 1] == '{') {
+                    j += 2;
+                    int bdepth = 1;
+                    while (j < n && bdepth > 0) {
+                        if (word[j] == '\\' && j + 1 < n) j += 2;
+                        else {
+                            if (word[j] == '{') bdepth++;
+                            else if (word[j] == '}') bdepth--;
+                            j++;
+                        }
+                    }
+                    continue;
+                }
+                if (word[j] == '{') {
+                    depth++;
+                    j++;
+                } else if (word[j] == '}') {
+                    if (depth > 0) {
+                        depth--;
+                        j++;
+                    } else {
+                        found_close = true;
+                        break;
+                    }
+                } else if (word[j] == ',' && depth == 0) {
+                    comma_positions.push_back(j);
+                    j++;
+                } else {
+                    j++;
+                }
+            }
+
+            if (found_close) {
+                size_t close_pos = j;
+                std::string inner = word.substr(open_pos + 1, close_pos - open_pos - 1);
+                std::vector<std::string> items;
+
+                if (!comma_positions.empty()) {
+                    size_t cur = open_pos + 1;
+                    for (size_t comma_idx : comma_positions) {
+                        items.push_back(word.substr(cur, comma_idx - cur));
+                        cur = comma_idx + 1;
+                    }
+                    items.push_back(word.substr(cur, close_pos - cur));
+                } else {
+                    parse_brace_range(inner, items);
+                }
+
+                if (!items.empty()) {
+                    std::string prefix = word.substr(0, open_pos);
+                    std::string suffix = word.substr(close_pos + 1);
+                    std::vector<std::string> result;
+                    for (const auto& item : items) {
+                        std::string candidate = prefix + item + suffix;
+                        auto sub = expand_braces(candidate);
+                        result.insert(result.end(), sub.begin(), sub.end());
+                    }
+                    return result;
+                }
+            }
+            i = open_pos + 1;
+            continue;
+        }
+
+        i++;
+    }
+
+    return {word};
+}
+
 std::vector<std::string> Expansion::expand_words(const std::vector<std::string>& words) {
     std::vector<std::string> result;
 
+    // Stage 0: Brace expansion
+    std::vector<std::string> brace_expanded;
     for (const auto& w : words) {
+        auto b = expand_braces(w);
+        brace_expanded.insert(brace_expanded.end(), b.begin(), b.end());
+    }
+
+    for (const auto& w : brace_expanded) {
         std::string tilde_expanded = expand_tilde(w);
         std::vector<bool> quote_mask;
         std::string param_expanded = expand_parameters_and_commands(tilde_expanded, quote_mask);

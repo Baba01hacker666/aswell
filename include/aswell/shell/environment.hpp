@@ -88,8 +88,21 @@ public:
     void remove_trap(int signum);
     const std::unordered_map<int, std::string>& get_traps() const { return traps_; }
 
+    // Directory stack
+    const std::vector<std::string>& get_dir_stack() const { return dir_stack_; }
+    std::vector<std::string>& get_dir_stack() { return dir_stack_; }
+    void push_dir(const std::string& dir) { dir_stack_.insert(dir_stack_.begin(), dir); }
+    bool pop_dir(std::string& out_dir) {
+        if (dir_stack_.empty()) return false;
+        out_dir = dir_stack_.front();
+        dir_stack_.erase(dir_stack_.begin());
+        return true;
+    }
+    void clear_dir_stack() { dir_stack_.clear(); }
+    void set_dir_stack(const std::vector<std::string>& stack) { dir_stack_ = stack; }
+
     // Path resolution
-    std::string find_in_path(const std::string& cmd) const;
+    std::string find_in_path(const std::string& cmd, const std::string& override_path = "") const;
 
 private:
     std::unordered_map<std::string, Variable> global_vars_;
@@ -101,6 +114,7 @@ private:
     std::unordered_map<std::string, std::string> aliases_;
     std::unordered_map<std::string, std::shared_ptr<FunctionDefNode>> functions_;
     std::unordered_map<int, std::string> traps_;
+    std::vector<std::string> dir_stack_;
 };
 
 } // namespace aswell
