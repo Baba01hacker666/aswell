@@ -47,7 +47,7 @@ void History::clear() {
 
 bool History::remove_at(size_t index) {
     if (index < entries_.size()) {
-        entries_.erase(entries_.begin() + index);
+        entries_.erase(entries_.begin() + static_cast<std::ptrdiff_t>(index));
         save();
         return true;
     }

@@ -63,9 +63,9 @@ bool parse_brace_range(const std::string& inner, std::vector<std::string>& items
                     std::ostringstream ss;
                     if (v < 0) {
                         size_t num_w = (width > 1) ? (width - 1) : 1;
-                        ss << "-" << std::setw(num_w) << std::setfill('0') << -v;
+                        ss << "-" << std::setw(static_cast<int>(num_w)) << std::setfill('0') << -v;
                     } else {
-                        ss << std::setw(width) << std::setfill('0') << v;
+                        ss << std::setw(static_cast<int>(width)) << std::setfill('0') << v;
                     }
                     items.push_back(ss.str());
                 } else {
@@ -78,9 +78,9 @@ bool parse_brace_range(const std::string& inner, std::vector<std::string>& items
                     std::ostringstream ss;
                     if (v < 0) {
                         size_t num_w = (width > 1) ? (width - 1) : 1;
-                        ss << "-" << std::setw(num_w) << std::setfill('0') << -v;
+                        ss << "-" << std::setw(static_cast<int>(num_w)) << std::setfill('0') << -v;
                     } else {
-                        ss << std::setw(width) << std::setfill('0') << v;
+                        ss << std::setw(static_cast<int>(width)) << std::setfill('0') << v;
                     }
                     items.push_back(ss.str());
                 } else {

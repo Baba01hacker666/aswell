@@ -302,7 +302,7 @@ int Builtins::builtin_dirs(const std::vector<std::string>& args, Environment& en
             std::cerr << "aswell: dirs: +" << show_index << ": directory stack index out of range\n";
             return 1;
         }
-        std::cout << format_dir_for_display(all_dirs[show_index], home) << "\n";
+        std::cout << format_dir_for_display(all_dirs[static_cast<size_t>(show_index)], home) << "\n";
         return 0;
     }
 
@@ -519,7 +519,7 @@ int Builtins::builtin_command(const std::vector<std::string>& args,
         return 1;
     }
 
-    std::vector<std::string> sub_args(args.begin() + i, args.end());
+    std::vector<std::string> sub_args(args.begin() + static_cast<std::ptrdiff_t>(i), args.end());
     if (cmd_name != "command" && Builtins::is_builtin(cmd_name)) {
         return Builtins::execute(cmd_name, sub_args, env, jobs, executor, flow);
     }

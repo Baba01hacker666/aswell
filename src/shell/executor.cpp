@@ -8,6 +8,13 @@
 namespace aswell {
 
 static std::string get_fallback_shell() {
+    // Prefer Aswell itself (/proc/self/exe) so we don't depend on external shells
+    char self_path[4096];
+    ssize_t len = readlink("/proc/self/exe", self_path, sizeof(self_path) - 1);
+    if (len > 0) {
+        self_path[len] = '\0';
+        return std::string(self_path);
+    }
     if (access("/bin/sh", X_OK) == 0) return "/bin/sh";
     if (access("/data/data/com.termux/files/usr/bin/bash", X_OK) == 0) return "/data/data/com.termux/files/usr/bin/bash";
     if (access("/data/data/com.termux/files/usr/bin/sh", X_OK) == 0) return "/data/data/com.termux/files/usr/bin/sh";
