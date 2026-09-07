@@ -156,7 +156,11 @@ void test_template_engine() {
 
     // 4. Default template creation & fire template animation
     TemplateEngine::ensure_default_templates();
-    std::string fire_file = TemplateEngine::get_templates_dir() + "/fire.html";
+    // Ensure templates directory exists for render_file
+    const char* home = std::getenv("HOME");
+    std::string tdir = home ? home + std::string("/.config/aswell/templates") : "/root/.config/aswell/templates";
+    mkdir(tdir.c_str(), 0755);
+    std::string fire_file = tdir + "/fire.html";
     std::string rendered_fire = TemplateEngine::render_file(fire_file, ctx);
     assert(!rendered_fire.empty());
 
