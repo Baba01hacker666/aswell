@@ -21,6 +21,8 @@ int ConfigEditor::run_interactive(Environment& env) {
     const int total_items = 12; // 7 components + theme + anim + hl + autosugg + colored_output
 
     PromptEngine preview_prompt(env);
+    if (!cfg.custom_username.empty()) preview_prompt.set_custom_user(cfg.custom_username);
+    if (!cfg.custom_hostname.empty()) preview_prompt.set_custom_hostname(cfg.custom_hostname);
 
     while (true) {
         Terminal::clear_screen();

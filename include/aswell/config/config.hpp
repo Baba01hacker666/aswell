@@ -20,6 +20,8 @@ struct ShellConfig {
     bool enable_command_banner = false;
     bool enable_colored_output = true;
     bool vi_mode = false;
+    std::string custom_username;
+    std::string custom_hostname;
     std::string custom_template_html;
 };
 

@@ -28,6 +28,10 @@ public:
 
     void set_theme_css(std::string_view css);
     void set_template_html(std::string_view html);
+    void set_custom_user(const std::string& user) { custom_user_ = user; }
+    void set_custom_hostname(const std::string& host) { custom_hostname_ = host; }
+    const std::string& custom_user() const { return custom_user_; }
+    const std::string& custom_hostname() const { return custom_hostname_; }
 
     RenderResult render(const PromptContext& ctx, uint64_t timestamp_ms);
     PromptContext gather_context(double last_duration_ms = 0.0, size_t active_jobs = 0, bool vi_normal = false);
@@ -42,6 +46,8 @@ private:
     Environment& env_;
     StyleSheet stylesheet_;
     std::string template_html_;
+    std::string custom_user_;
+    std::string custom_hostname_;
     bool has_animations_ = false;
 };
 

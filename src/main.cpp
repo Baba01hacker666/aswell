@@ -46,6 +46,14 @@ int main(int argc, char* argv[]) {
     HookManager hooks;
     PluginManager plugins(env, hooks);
 
+    ShellConfig early_cfg = ConfigManager::load();
+    if (!early_cfg.custom_username.empty()) {
+        env.set_var("ASWELL_USER", early_cfg.custom_username, true);
+    }
+    if (!early_cfg.custom_hostname.empty()) {
+        env.set_var("ASWELL_HOSTNAME", early_cfg.custom_hostname, true);
+    }
+
     std::string command_string;
     std::string script_path;
     std::vector<std::string> script_args;
@@ -88,6 +96,17 @@ int main(int argc, char* argv[]) {
             explicit_config = true;
             custom_config_path = argv[++i];
         } else if (arg == "config") {
+            if (i + 1 < argc) {
+                std::vector<std::string> cfg_args;
+                cfg_args.push_back("aswell");
+                cfg_args.push_back("config");
+                for (int j = i + 1; j < argc; ++j) {
+                    cfg_args.push_back(argv[j]);
+                }
+                Executor early_exec(env, jobs);
+                ControlFlow flow;
+                return Builtins::execute("aswell", cfg_args, env, jobs, early_exec, flow);
+            }
             // Interactive Configuration Editor TUI
             return ConfigEditor::run_interactive(env);
         } else if (arg == "theme") {
@@ -276,6 +295,14 @@ int main(int argc, char* argv[]) {
 
     // Setup prompt engine
     PromptEngine prompt_engine(env);
+    if (!cfg.custom_username.empty()) {
+        prompt_engine.set_custom_user(cfg.custom_username);
+        env.set_var("ASWELL_USER", cfg.custom_username, true);
+    }
+    if (!cfg.custom_hostname.empty()) {
+        prompt_engine.set_custom_hostname(cfg.custom_hostname);
+        env.set_var("ASWELL_HOSTNAME", cfg.custom_hostname, true);
+    }
     if (!env.opt_no_theme) {
         // 1. Custom CSS theme check (~/.config/aswell/theme.css or ~/.config/aswell/themes/<name>.css)
         std::string custom_css_path = ConfigManager::get_config_dir() + "/theme.css";

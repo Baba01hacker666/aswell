@@ -60,6 +60,34 @@ aswell color list
 colored_output=true        # Enable default color aliases (ls, grep, diff) and truecolor env
 ```
 
+## Custom Username & Hostname
+
+Customize the user and host names displayed in your prompt without altering your system login or system hostname:
+
+```bash
+# Set via CLI
+aswell config username Doraemon
+aswell config hostname CyberDeck
+
+# View current settings
+aswell config username
+aswell config hostname
+
+# Reset to system defaults
+aswell config username default
+aswell config hostname default
+```
+
+Or persist them in `~/.config/aswell/config.txt`:
+
+```ini
+username=Doraemon
+hostname=CyberDeck
+```
+
+You can also override them via environment variables (`ASWELL_USER` / `ASWELL_USERNAME` and `ASWELL_HOSTNAME` / `ASWELL_HOST`), or specify inline attributes in your `~/.config/aswell/prompt.html` (e.g. `<user name="Doraemon" />`, `<hostname name="CyberDeck" />`).
+
+
 ## CLI Theme Commands
 
 Quickly inspect or change themes directly from your terminal:

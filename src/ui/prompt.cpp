@@ -170,16 +170,34 @@ std::string PromptEngine::get_shortened_path(const std::string& path) {
 PromptContext PromptEngine::gather_context(double last_duration_ms, size_t active_jobs, bool vi_normal) {
     PromptContext ctx;
 
-    const char* user = std::getenv("USER");
-    ctx.user = user ? user : "user";
-
-    char host[256] = {0};
-    if (gethostname(host, sizeof(host)) == 0) {
-        ctx.hostname = host;
-        size_t dot = ctx.hostname.find('.');
-        if (dot != std::string::npos) ctx.hostname = ctx.hostname.substr(0, dot);
+    // 1. Username resolution
+    if (!custom_user_.empty()) {
+        ctx.user = custom_user_;
+    } else if (env_.has_var("ASWELL_USER") && !env_.get_var("ASWELL_USER").empty()) {
+        ctx.user = env_.get_var("ASWELL_USER");
+    } else if (env_.has_var("ASWELL_USERNAME") && !env_.get_var("ASWELL_USERNAME").empty()) {
+        ctx.user = env_.get_var("ASWELL_USERNAME");
     } else {
-        ctx.hostname = "localhost";
+        const char* user = std::getenv("USER");
+        ctx.user = user ? user : "user";
+    }
+
+    // 2. Hostname resolution
+    if (!custom_hostname_.empty()) {
+        ctx.hostname = custom_hostname_;
+    } else if (env_.has_var("ASWELL_HOSTNAME") && !env_.get_var("ASWELL_HOSTNAME").empty()) {
+        ctx.hostname = env_.get_var("ASWELL_HOSTNAME");
+    } else if (env_.has_var("ASWELL_HOST") && !env_.get_var("ASWELL_HOST").empty()) {
+        ctx.hostname = env_.get_var("ASWELL_HOST");
+    } else {
+        char host[256] = {0};
+        if (gethostname(host, sizeof(host)) == 0) {
+            ctx.hostname = host;
+            size_t dot = ctx.hostname.find('.');
+            if (dot != std::string::npos) ctx.hostname = ctx.hostname.substr(0, dot);
+        } else {
+            ctx.hostname = "localhost";
+        }
     }
 
     ctx.cwd = get_shortened_path(env_.get_var("PWD"));
@@ -292,9 +310,17 @@ static void populate_dom_data(std::shared_ptr<UIElement> elem, const PromptConte
 
     // 2. Builtin tags
     if (elem->tag == "user") {
-        elem->text_content = ctx.user;
+        if (elem->has_attribute("name")) {
+            elem->text_content = elem->get_attribute("name");
+        } else if (elem->text_content.empty()) {
+            elem->text_content = ctx.user;
+        }
     } else if (elem->tag == "hostname") {
-        elem->text_content = ctx.hostname;
+        if (elem->has_attribute("name")) {
+            elem->text_content = elem->get_attribute("name");
+        } else if (elem->text_content.empty()) {
+            elem->text_content = ctx.hostname;
+        }
     } else if (elem->tag == "directory") {
         elem->text_content = ctx.cwd;
     } else if (elem->tag == "git") {

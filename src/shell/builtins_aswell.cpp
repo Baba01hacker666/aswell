@@ -62,16 +62,95 @@ int Builtins::builtin_aswell(const std::vector<std::string>& args, Environment& 
         if (args.size() == 2 || (args.size() >= 3 && args[2] == "list")) {
             std::cout << "\033[1;34mAswell Configuration:\033[0m\n"
                       << "  * \033[1;32mtheme\033[0m    - Switch or list visual themes\n"
+                      << "  * \033[1;32musername\033[0m - Set or view custom prompt username\n"
+                      << "  * \033[1;32mhostname\033[0m - Set or view custom prompt hostname\n"
                       << "  * \033[1;32mcustom\033[0m   - Manage custom commands\n"
                       << "  * \033[1;32mtemplate\033[0m - Manage prompt templates\n"
                       << "  * \033[1;32mhooks\033[0m    - Manage dynamic script hooks\n"
-                      << "\nUsage: aswell config <subcommand>\n"
-                      << "Run 'aswell config list' to see available options.\n";
+                      << "\nUsage: aswell config [username <name> | hostname <name> | theme <name> | path]\n";
             return 0;
         }
         if (args.size() >= 3 && args[2] == "path") {
             std::cout << aswell::ConfigManager::get_config_dir() << "\n";
             return 0;
+        }
+        if (args.size() >= 3 && (args[2] == "username" || args[2] == "user")) {
+            ShellConfig cfg = ConfigManager::load();
+            if (args.size() >= 4) {
+                std::string new_user = args[3];
+                if (new_user == "default" || new_user == "reset" || new_user == "none" || new_user == "\"\"" || new_user == "''") {
+                    cfg.custom_username.clear();
+                    ConfigManager::save(cfg);
+                    env.unset_var("ASWELL_USER");
+                    std::cout << "Custom username reset to system default.\n";
+                } else {
+                    cfg.custom_username = new_user;
+                    ConfigManager::save(cfg);
+                    env.set_var("ASWELL_USER", new_user, true);
+                    std::cout << "Custom username set to: \033[1;32m" << new_user << "\033[0m\n";
+                }
+            } else {
+                std::string cur_user = !cfg.custom_username.empty() ? cfg.custom_username : (env.has_var("USER") ? env.get_var("USER") : "user");
+                std::cout << "Current username: \033[1;32m" << cur_user << "\033[0m"
+                          << (!cfg.custom_username.empty() ? " (custom override)" : "") << "\n";
+            }
+            return 0;
+        }
+        if (args.size() >= 3 && (args[2] == "hostname" || args[2] == "host")) {
+            ShellConfig cfg = ConfigManager::load();
+            if (args.size() >= 4) {
+                std::string new_host = args[3];
+                if (new_host == "default" || new_host == "reset" || new_host == "none" || new_host == "\"\"" || new_host == "''") {
+                    cfg.custom_hostname.clear();
+                    ConfigManager::save(cfg);
+                    env.unset_var("ASWELL_HOSTNAME");
+                    std::cout << "Custom hostname reset to system default.\n";
+                } else {
+                    cfg.custom_hostname = new_host;
+                    ConfigManager::save(cfg);
+                    env.set_var("ASWELL_HOSTNAME", new_host, true);
+                    std::cout << "Custom hostname set to: \033[1;32m" << new_host << "\033[0m\n";
+                }
+            } else {
+                std::string cur_host = !cfg.custom_hostname.empty() ? cfg.custom_hostname : (env.has_var("HOSTNAME") ? env.get_var("HOSTNAME") : "localhost");
+                std::cout << "Current hostname: \033[1;32m" << cur_host << "\033[0m"
+                          << (!cfg.custom_hostname.empty() ? " (custom override)" : "") << "\n";
+            }
+            return 0;
+        }
+        if (args.size() >= 3 && args[2] == "set") {
+            if (args.size() >= 5 && (args[3] == "username" || args[3] == "user")) {
+                ShellConfig cfg = ConfigManager::load();
+                std::string val = args[4];
+                if (val == "default" || val == "reset" || val == "none" || val == "\"\"" || val == "''") {
+                    cfg.custom_username.clear();
+                    ConfigManager::save(cfg);
+                    env.unset_var("ASWELL_USER");
+                    std::cout << "Custom username reset to system default.\n";
+                } else {
+                    cfg.custom_username = val;
+                    ConfigManager::save(cfg);
+                    env.set_var("ASWELL_USER", val, true);
+                    std::cout << "Custom username set to: \033[1;32m" << val << "\033[0m\n";
+                }
+                return 0;
+            }
+            if (args.size() >= 5 && (args[3] == "hostname" || args[3] == "host")) {
+                ShellConfig cfg = ConfigManager::load();
+                std::string val = args[4];
+                if (val == "default" || val == "reset" || val == "none" || val == "\"\"" || val == "''") {
+                    cfg.custom_hostname.clear();
+                    ConfigManager::save(cfg);
+                    env.unset_var("ASWELL_HOSTNAME");
+                    std::cout << "Custom hostname reset to system default.\n";
+                } else {
+                    cfg.custom_hostname = val;
+                    ConfigManager::save(cfg);
+                    env.set_var("ASWELL_HOSTNAME", val, true);
+                    std::cout << "Custom hostname set to: \033[1;32m" << val << "\033[0m\n";
+                }
+                return 0;
+            }
         }
         if (args.size() >= 3 && args[2] == "theme") {
             if (args.size() >= 4) {

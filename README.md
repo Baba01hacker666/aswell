@@ -44,6 +44,10 @@ aswell
 # Open the interactive configuration menu
 aswell config
 
+# Customize username or hostname
+aswell config username Doraemon
+aswell config hostname CyberDeck
+
 # Pick a theme (modern, cyberpunk, nord, dracula, minimal, powerline)
 aswell theme list
 aswell theme set cyberpunk

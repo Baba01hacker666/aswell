@@ -174,6 +174,39 @@ void test_template_engine() {
     std::cout << "[PASS] test_template_engine\n";
 }
 
+void test_custom_username_and_hostname() {
+    Environment env;
+    PromptEngine pe(env);
+
+    // 1. Explicit setter override
+    pe.set_custom_user("cyberhacker");
+    pe.set_custom_hostname("matrix-node");
+    pe.set_template_html("<prompt><user />@<hostname /></prompt>");
+    auto ctx = pe.gather_context();
+    RenderResult res = pe.render(ctx, 0);
+    assert(res.ansi_output.find("cyberhacker") != std::string::npos);
+    assert(res.ansi_output.find("matrix-node") != std::string::npos);
+
+    // 2. Attribute-based override in template
+    pe.set_template_html("<prompt><user name=\"admin\" />@<hostname name=\"nexus\" /></prompt>");
+    RenderResult res2 = pe.render(ctx, 0);
+    assert(res2.ansi_output.find("admin") != std::string::npos);
+    assert(res2.ansi_output.find("nexus") != std::string::npos);
+
+    // 3. Environment variable override
+    Environment env2;
+    env2.set_var("ASWELL_USER", "doraemon");
+    env2.set_var("ASWELL_HOSTNAME", "future-earth");
+    PromptEngine pe2(env2);
+    pe2.set_template_html("<prompt><user />@<hostname /></prompt>");
+    auto ctx3 = pe2.gather_context();
+    RenderResult res3 = pe2.render(ctx3, 0);
+    assert(res3.ansi_output.find("doraemon") != std::string::npos);
+    assert(res3.ansi_output.find("future-earth") != std::string::npos);
+
+    std::cout << "[PASS] test_custom_username_and_hostname\n";
+}
+
 int main() {
     std::cout << "--- Running UI & Layout Tests ---\n";
     test_dom_parsing();
@@ -184,6 +217,7 @@ int main() {
     test_conditional_directives();
     test_rprompt_and_statusbar();
     test_template_engine();
+    test_custom_username_and_hostname();
     std::cout << "All UI Tests Passed!\n";
     return 0;
 }

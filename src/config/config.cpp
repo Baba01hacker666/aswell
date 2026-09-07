@@ -50,6 +50,8 @@ ShellConfig ConfigManager::load() {
         std::string v = str_util::trim(line.substr(eq + 1));
 
         if (k == "theme") cfg.theme_name = v;
+        else if (k == "username" || k == "custom_username" || k == "user") cfg.custom_username = v;
+        else if (k == "hostname" || k == "custom_hostname" || k == "host") cfg.custom_hostname = v;
         else if (k == "animation") cfg.enable_animation = (v == "true" || v == "1");
         else if (k == "syntax_highlighting") cfg.enable_syntax_highlighting = (v == "true" || v == "1");
         else if (k == "autosuggestions") cfg.enable_autosuggestions = (v == "true" || v == "1");
@@ -94,6 +96,12 @@ void ConfigManager::save(const ShellConfig& cfg) {
     f << "command_banner=" << (cfg.enable_command_banner ? "true" : "false") << "\n";
     f << "colored_output=" << (cfg.enable_colored_output ? "true" : "false") << "\n";
     f << "vi_mode=" << (cfg.vi_mode ? "true" : "false") << "\n";
+    if (!cfg.custom_username.empty()) {
+        f << "username=" << cfg.custom_username << "\n";
+    }
+    if (!cfg.custom_hostname.empty()) {
+        f << "hostname=" << cfg.custom_hostname << "\n";
+    }
 }
 
 } // namespace aswell

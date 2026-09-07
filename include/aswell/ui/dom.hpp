@@ -26,6 +26,7 @@ public:
     void apply_styles(const StyleSheet& sheet);
 
     std::string get_attribute(const std::string& key) const;
+    bool has_attribute(const std::string& key) const { return attributes.find(key) != attributes.end(); }
     bool has_class(const std::string& cls) const;
     void add_class(const std::string& cls);
 };
