@@ -128,7 +128,7 @@ jobs:
       - name: Compile for Termux (Android NDK)
         run: |
           make clean
-          make -j$(nproc) CXX="$CXX" CXXFLAGS="-std=c++20 -O2 -Wall -Wextra -Iinclude"
+          make -j$(nproc) CXX="$CXX" CXXFLAGS="-std=c++20 -O2 -Wall -Wextra -Iinclude" LDFLAGS="-static-libstdc++"
 
       - name: Strip Symbols
         run: |
@@ -140,6 +140,7 @@ jobs:
           mkdir -p dist/themes
           cp bin/aswell dist/aswell
           cp bin/demo_engine dist/aswell-demo
+          find "$NDK_DIR" -name "libc++_shared.so" | grep -E "aarch64|arm64" | head -n 1 | xargs -I {} cp {} dist/ 2>/dev/null || true
           cp examples/*.css dist/themes/ 2>/dev/null || true
           cp README.md LICENSE dist/ 2>/dev/null || true
           tar -czf aswell-termux-aarch64.tar.gz -C dist .
