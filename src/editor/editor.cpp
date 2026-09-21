@@ -238,29 +238,44 @@ void LineEditor::show_completion_menu(const std::vector<CompletionCandidate>& ca
         if (c.description == "custom command") {
             badge_tag = "CUSTOM";
             badge_color = "\033[1;92m"; // Bright Green
-        } else if (c.is_directory) {
-            badge_tag = "DIR/ ";
+        } else if (c.is_directory || c.description == "directory") {
+            badge_tag = "DIR/  ";
             badge_color = "\033[1;34m";
-        } else if (c.description == "builtin" || c.description.find("directory") != std::string::npos ||
-                   c.description.find("print") != std::string::npos || c.description.find("Exit") != std::string::npos) {
-            badge_tag = "BUILT";
-            badge_color = "\033[1;35m";
+        } else if (str_util::starts_with(c.description, "builtin")) {
+            badge_tag = "BUILT ";
+            badge_color = "\033[1;33m"; // Bright Yellow
         } else if (c.description == "alias") {
-            badge_tag = "ALIAS";
-            badge_color = "\033[1;33m";
+            badge_tag = "ALIAS ";
+            badge_color = "\033[1;35m"; // Magenta
         } else if (c.description == "function") {
-            badge_tag = "FUNC ";
-            badge_color = "\033[1;32m";
-        } else if (str_util::starts_with(c.text, "-")) {
-            badge_tag = "FLAG ";
+            badge_tag = "FUNC  ";
+            badge_color = "\033[1;32m"; // Green
+        } else if (c.description == "flag" || str_util::starts_with(c.text, "--") ||
+                   (str_util::starts_with(c.text, "-") && c.text.size() > 1)) {
+            badge_tag = "FLAG  ";
             badge_color = "\033[1;33m";
-        } else if (str_util::starts_with(c.text, "$")) {
-            badge_tag = "VAR  ";
-            badge_color = "\033[1;35m";
+        } else if (c.description == "branch") {
+            badge_tag = "BRANCH";
+            badge_color = "\033[1;36m";
+        } else if (c.description == "subcommand") {
+            badge_tag = "SUBCMD";
+            badge_color = "\033[1;36m";
+        } else if (c.description == "signal") {
+            badge_tag = "SIGNAL";
+            badge_color = "\033[1;31m";
+        } else if (str_util::starts_with(c.text, "$") || str_util::starts_with(c.display_name, "$")) {
+            badge_tag = "$VAR  ";
+            badge_color = "\033[1;96m"; // Light Cyan
+        } else if (c.description == "file") {
+            badge_tag = "FILE  ";
+            badge_color = "\033[0;37m";
+        } else {
+            badge_tag = "CMD   ";
+            badge_color = "\033[1;36m"; // Cyan
         }
 
         std::string row_left = "  " + badge_color + "[" + badge_tag + "]\033[0m \033[1;97m" + c.display_name + "\033[0m";
-        int vis_left = 2 + 7 + 1 + static_cast<int>(str_util::visual_width(c.display_name));
+        int vis_left = 2 + 8 + 1 + static_cast<int>(str_util::visual_width(c.display_name));
 
         std::string row_desc;
         if (!c.description.empty() && c.description != "command") {

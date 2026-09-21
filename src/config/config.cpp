@@ -66,6 +66,9 @@ ShellConfig ConfigManager::load() {
         else if (k == "command_banner") cfg.enable_command_banner = (v == "true" || v == "1");
         else if (k == "colored_output") cfg.enable_colored_output = (v == "true" || v == "1");
         else if (k == "vi_mode") cfg.vi_mode = (v == "true" || v == "1");
+        else if (k == "import_bashrc" || k == "bashrc" || k == "bash_compat") {
+            cfg.import_bashrc = (v == "true" || v == "1");
+        }
     }
 
     return cfg;
@@ -96,6 +99,7 @@ void ConfigManager::save(const ShellConfig& cfg) {
     f << "command_banner=" << (cfg.enable_command_banner ? "true" : "false") << "\n";
     f << "colored_output=" << (cfg.enable_colored_output ? "true" : "false") << "\n";
     f << "vi_mode=" << (cfg.vi_mode ? "true" : "false") << "\n";
+    f << "import_bashrc=" << (cfg.import_bashrc ? "true" : "false") << "\n";
     if (!cfg.custom_username.empty()) {
         f << "username=" << cfg.custom_username << "\n";
     }

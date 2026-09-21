@@ -58,7 +58,25 @@ aswell color list
 
 ```ini
 colored_output=true        # Enable default color aliases (ls, grep, diff) and truecolor env
+import_bashrc=true         # Import ~/.bashrc aliases, exports, PATH and functions on startup
 ```
+
+### Bash Compatibility (`~/.bashrc` import)
+
+On interactive startup Aswell imports your `~/.bashrc` so existing aliases
+(`ll`, `gs`, ...), `export`ed variables (`EDITOR`, `PATH` entries, API keys)
+and POSIX-compatible shell functions work immediately. `~/.aswellrc` is loaded
+afterwards and always wins on conflicts. Completion also sees bash aliases.
+
+```bash
+aswell bash status         # show import status and alias count
+aswell bash import         # re-import (e.g. after editing ~/.bashrc)
+```
+
+Disable via `import_bashrc=false` in `~/.config/aswell/config.txt`,
+`--safe-mode`, or `ASWELL_NO_BASHRC=1`. Prompt internals (`PS1`,
+`PROMPT_COMMAND`), history tuning and completion machinery (`_*` functions,
+`COMPREPLY`) are never imported.
 
 ## Custom Username & Hostname
 
@@ -88,8 +106,20 @@ hostname=CyberDeck
 You can also override them via environment variables (`ASWELL_USER` / `ASWELL_USERNAME` and `ASWELL_HOSTNAME` / `ASWELL_HOST`), or specify inline attributes in your `~/.config/aswell/prompt.html` (e.g. `<user name="Doraemon" />`, `<hostname name="CyberDeck" />`).
 
 
-## CLI Theme Commands
+## Smart cd (unique prefix matching)
 
+Interactively, `cd` accepts a half-typed directory name when it matches exactly
+one directory in the current folder (case-insensitive fallback included):
+
+```bash
+cd Doc     # → jumps to Documents, prints where it went
+cd D       # ambiguous → lists matches instead of guessing
+```
+
+Exact paths always win, and scripts / `aswell -c` keep strict POSIX behavior
+(no guessing outside interactive use).
+
+## CLI Theme Commands
 Quickly inspect or change themes directly from your terminal:
 
 ```bash

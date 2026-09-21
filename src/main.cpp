@@ -10,6 +10,7 @@
 #include "aswell/config/config.hpp"
 #include "aswell/config/theme.hpp"
 #include "aswell/config/config_editor.hpp"
+#include "aswell/shell/bash_compat.hpp"
 #include "aswell/plugin/plugin.hpp"
 #include "aswell/ui/demo.hpp"
 #include "aswell/ui/template_engine.hpp"
@@ -31,6 +32,7 @@ static void print_help() {
               << "  --config PATH  Specify custom configuration directory\n"
               << "  --no-theme     Disable theme engine and run plain POSIX output\n"
               << "  --safe-mode    Disable external plugins and third-party scripts\n"
+              << "  --no-bashrc    Skip importing ~/.bashrc aliases and environment\n"
               << "  --version, -v  Print version information\n"
               << "  --help, -h     Print this help message\n\n"
               << "Subcommands:\n"
@@ -59,6 +61,7 @@ int main(int argc, char* argv[]) {
     std::vector<std::string> script_args;
     bool explicit_config = false;
     std::string custom_config_path;
+    bool no_bashrc_flag = false;
     (void)explicit_config;
     (void)custom_config_path;
 
@@ -92,6 +95,8 @@ int main(int argc, char* argv[]) {
             env.opt_no_theme = true;
         } else if (arg == "--safe-mode") {
             env.opt_safe_mode = true;
+        } else if (arg == "--no-bashrc") {
+            no_bashrc_flag = true;
         } else if (arg == "--config" && i + 1 < argc) {
             explicit_config = true;
             custom_config_path = argv[++i];
@@ -268,6 +273,15 @@ int main(int argc, char* argv[]) {
     }
 
     // Load startup file (~/.aswellrc or ~/.config/aswell/aswellrc)
+    // Bash compatibility first: import ~/.bashrc aliases/exports/functions so
+    // `ll`, `gs`, custom PATH entries etc. just work. ~/.aswellrc is loaded
+    // afterwards and always wins on conflicts.
+    if (cfg.import_bashrc && !env.opt_safe_mode && !no_bashrc_flag) {
+        const char* no_bash = std::getenv("ASWELL_NO_BASHRC");
+        if (!no_bash || std::string(no_bash) != "1") {
+            BashCompat::import_bashrc(env, &executor, false);
+        }
+    }
     const char* home = std::getenv("HOME");
     std::string rc_path;
     if (home) {

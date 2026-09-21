@@ -1,5 +1,6 @@
 #include "aswell/shell/builtins.hpp"
 #include "aswell/config/config.hpp"
+#include "aswell/shell/bash_compat.hpp"
 #include "aswell/ui/template_engine.hpp"
 #include "aswell/ui/terminal.hpp"
 #include <iostream>
@@ -10,7 +11,7 @@
 
 namespace aswell {
 
-int Builtins::builtin_aswell(const std::vector<std::string>& args, Environment& env, Executor& /*executor*/) {
+int Builtins::builtin_aswell(const std::vector<std::string>& args, Environment& env, Executor& executor) {
     if (args.size() <= 1) {
         std::cout << SHELL_BANNER << "\n"
                   << "Type 'aswell help' for commands, 'aswell color' for colored output, or 'aswell theme' to configure themes.\n";
@@ -169,6 +170,52 @@ int Builtins::builtin_aswell(const std::vector<std::string>& args, Environment& 
             }
             return 0;
         }
+    }
+    if (sub == "bash" || sub == "bashrc") {
+        std::string action = (args.size() >= 3) ? args[2] : "status";
+        if (action == "import" || action == "reload" || action == "load") {
+            BashImportStats stats = BashCompat::import_bashrc(env, &executor, true);
+            if (stats.skipped) {
+                std::cout << "Bash import skipped (no ~/.bashrc or ASWELL_NO_BASHRC=1).\n";
+            } else {
+                std::cout << "Imported from ~/.bashrc: " << stats.aliases << " aliases, "
+                          << stats.variables << " variables, " << stats.functions << " functions"
+                          << (stats.used_bash_dump ? " (via bash)" : " (direct parse)") << "\n";
+            }
+            return 0;
+        }
+        if (action == "off" || action == "disable" || action == "no") {
+            ShellConfig bcfg = ConfigManager::load();
+            bcfg.import_bashrc = false;
+            ConfigManager::save(bcfg);
+            std::cout << "Bash ~/.bashrc import disabled (import_bashrc=false).\n";
+            return 0;
+        }
+        if (action == "on" || action == "enable" || action == "yes") {
+            ShellConfig bcfg = ConfigManager::load();
+            bcfg.import_bashrc = true;
+            ConfigManager::save(bcfg);
+            BashImportStats stats = BashCompat::import_bashrc(env, &executor, true);
+            if (stats.skipped) {
+                std::cout << "Bash import enabled but skipped (no ~/.bashrc found).\n";
+            } else {
+                std::cout << "Bash import enabled. Imported: " << stats.aliases << " aliases, "
+                          << stats.variables << " variables, " << stats.functions << " functions"
+                          << (stats.used_bash_dump ? " (via bash)" : " (direct parse)") << "\n";
+            }
+            return 0;
+        }
+        if (action == "status") {
+            std::cout << "\033[1;34mBash Compatibility (~/.bashrc):\033[0m\n"
+                      << "  * Aliases imported   : " << env.get_aliases().size() << " total\n"
+                      << "  * bash available     : " << (BashCompat::bash_available() ? "yes" : "no") << "\n"
+                      << "  * source file        : " << BashCompat::default_bashrc_path() << "\n"
+                      << "  * disable via        : ASWELL_NO_BASHRC=1 or import_bashrc=false in config.txt\n"
+                      << "  * re-import via      : aswell bash import\n";
+            return 0;
+        }
+        std::cout << "Usage: aswell bash [import | status | on | off]\n";
+        return 0;
     }
     if (sub == "custom") {
         const char* home_env = std::getenv("HOME");
