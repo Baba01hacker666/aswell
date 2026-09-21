@@ -10,6 +10,8 @@
 #include <unistd.h>
 #include <iomanip>
 #include <cctype>
+#include <algorithm>
+#include <dirent.h>
 
 namespace aswell {
 
@@ -184,6 +186,53 @@ static void print_color_list() {
               << "  Any numeric 256-color code: 0 .. 255 (e.g. 196, 46, 226)\n";
 }
 
+namespace {
+// Smart-cd helper: resolve a partial directory name to the unique match in
+// the current directory. Returns the match, or "" when there is none (or
+// more than one, in which case out_candidates lists them, sorted).
+// Only simple names qualify: paths containing '/' and "." / ".." are left
+// to strict resolution.
+std::string resolve_unique_dir_prefix(const std::string& target,
+                                      std::vector<std::string>& out_candidates) {
+    std::string name = target;
+    while (name.size() > 1 && name.back() == '/') name.pop_back();
+    if (name.empty() || name.find('/') != std::string::npos) return "";
+    if (name == "." || name == "..") return "";
+
+    DIR* dir = opendir(".");
+    if (!dir) return "";
+    std::vector<std::string> sensitive, insensitive;
+    struct dirent* ent;
+    while ((ent = readdir(dir)) != nullptr) {
+        std::string dname = ent->d_name;
+        if (dname == "." || dname == "..") continue;
+        if (dname[0] == '.' && name[0] != '.') continue;
+        bool prefix = dname.size() >= name.size() && dname.compare(0, name.size(), name) == 0;
+        bool iprefix = false;
+        if (!prefix) {
+            iprefix = dname.size() >= name.size() &&
+                      str_util::to_lower(dname).compare(0, name.size(), str_util::to_lower(name)) == 0;
+        }
+        if (!prefix && !iprefix) continue;
+        bool is_dir = (ent->d_type == DT_DIR);
+        if (!is_dir && (ent->d_type == DT_UNKNOWN || ent->d_type == DT_LNK)) {
+            struct stat st{};
+            if (stat(dname.c_str(), &st) == 0) is_dir = S_ISDIR(st.st_mode);
+        }
+        if (!is_dir) continue;
+        if (prefix) sensitive.push_back(dname);
+        else insensitive.push_back(dname);
+    }
+    closedir(dir);
+
+    if (sensitive.size() == 1) return sensitive[0];
+    if (sensitive.empty() && insensitive.size() == 1) return insensitive[0];
+    out_candidates = sensitive.empty() ? insensitive : sensitive;
+    std::sort(out_candidates.begin(), out_candidates.end());
+    return "";
+}
+} // namespace
+
 int Builtins::builtin_cd(const std::vector<std::string>& args, Environment& env) {
     std::string target;
     if (args.size() <= 1) {
@@ -209,8 +258,33 @@ int Builtins::builtin_cd(const std::vector<std::string>& args, Environment& env)
     }
 
     if (chdir(target.c_str()) != 0) {
-        std::cerr << "aswell: cd: " << target << ": " << std::strerror(errno) << "\n";
-        return 1;
+        // Interactive-only smart-cd fallback: `cd doc` jumps to `Documents`
+        // when it is the unique prefix match. Scripts keep strict POSIX
+        // semantics (no fallback outside interactive use).
+        std::string resolved;
+        std::vector<std::string> candidates;
+        if (env.opt_interactive) {
+            resolved = resolve_unique_dir_prefix(target, candidates);
+        }
+        if (!resolved.empty()) {
+            if (chdir(resolved.c_str()) != 0) {
+                std::cerr << "aswell: cd: " << resolved << ": " << std::strerror(errno) << "\n";
+                return 1;
+            }
+            std::cout << resolved << "\n";
+        } else {
+            if (!candidates.empty()) {
+                std::cerr << "aswell: cd: " << target << ": ambiguous — matches: ";
+                for (size_t i = 0; i < candidates.size(); ++i) {
+                    if (i > 0) std::cerr << ", ";
+                    std::cerr << candidates[i];
+                }
+                std::cerr << "\n";
+            } else {
+                std::cerr << "aswell: cd: " << target << ": " << std::strerror(errno) << "\n";
+            }
+            return 1;
+        }
     }
 
     char new_buf[4096];
