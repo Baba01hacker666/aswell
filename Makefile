@@ -21,6 +21,7 @@ SRCS = $(wildcard src/shell/*.cpp) \
        src/main.cpp
 
 OBJS = $(SRCS:.cpp=.o)
+DEPS = $(OBJS:.o=.d)
 TARGET = bin/aswell
 DEMO_TARGET = bin/demo_engine
 DEMO_OBJS = $(filter-out src/main.o, $(OBJS)) examples/demo_engine.o
@@ -42,10 +43,10 @@ bin:
 	mkdir -p bin
 
 %.o: %.cpp
-	$(CXX) $(CXXFLAGS) -c $< -o $@
+	$(CXX) $(CXXFLAGS) -MMD -MP -c $< -o $@
 
 clean:
-	rm -f $(OBJS) $(TARGET) examples/demo_engine.o $(DEMO_TARGET)
+	rm -f $(OBJS) $(DEPS) $(TARGET) examples/demo_engine.o examples/demo_engine.d $(DEMO_TARGET)
 
 install: $(TARGET)
 	install -d /usr/local/bin
@@ -58,3 +59,5 @@ test-hardened:
 	$(MAKE) test CXXFLAGS="-std=c++20 -O2 $(HARDENING_FLAGS) -Iinclude" LDFLAGS="-fsanitize=address,undefined"
 
 .PHONY: all harden clean install test test-hardened demo
+
+-include $(DEPS)

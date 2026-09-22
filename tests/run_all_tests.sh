@@ -19,6 +19,9 @@ $CXX $CXXFLAGS -Iinclude tests/test_expansion.cpp src/shell/expansion.o src/shel
 $CXX $CXXFLAGS -Iinclude tests/test_css.cpp src/ui/css_parser.o src/ui/color.o -o bin/test_css $LDFLAGS
 $CXX $CXXFLAGS -Iinclude tests/test_ui.cpp src/ui/dom.o src/ui/layout.o src/ui/render.o src/ui/color.o src/ui/animation.o src/ui/css_parser.o src/ui/prompt.o src/ui/terminal.o src/ui/template_engine.o src/shell/environment.o -o bin/test_ui $LDFLAGS
 $CXX $CXXFLAGS -Iinclude tests/test_history.cpp src/editor/history.o -o bin/test_history $LDFLAGS
+$CXX $CXXFLAGS -Iinclude tests/test_bashcompat.cpp src/shell/*.o src/editor/*.o src/ui/*.o src/config/*.o -o bin/test_bashcompat $LDFLAGS
+$CXX $CXXFLAGS -Iinclude tests/test_completion.cpp src/shell/*.o src/editor/*.o src/ui/*.o src/config/*.o -o bin/test_completion $LDFLAGS
+$CXX $CXXFLAGS -Iinclude tests/test_cd_hash_umask.cpp src/shell/*.o src/editor/*.o src/ui/*.o src/config/*.o -o bin/test_cd_hash_umask $LDFLAGS
 
 echo "2. Running Unit Tests..."
 ./bin/test_lexer
@@ -27,6 +30,9 @@ echo "2. Running Unit Tests..."
 ./bin/test_css
 ./bin/test_ui
 ./bin/test_history
+./bin/test_bashcompat
+./bin/test_completion
+./bin/test_cd_hash_umask
 
 echo ""
 echo "3. Running POSIX Compatibility Script Suite..."
@@ -234,6 +240,64 @@ if [ -n "$OUT" ]; then
     exit 1
 fi
 echo "[PASS] history builtin (-c clear and management)"
+
+echo ""
+echo "7. Running Bash Compat, Smart CD, Hash & Umask Tests..."
+
+# Strict cd in scripts (POSIX): partial names must NOT resolve non-interactively
+set +e
+./bin/aswell -c 'cd /tmp/aswell_no_such_dir_xyz_123' 2>/dev/null
+STATUS=$?
+set -e
+if [ "$STATUS" -eq 0 ]; then
+    echo "[FAIL] non-interactive cd unexpectedly succeeded"
+    exit 1
+fi
+echo "[PASS] Non-interactive cd stays strict (POSIX)"
+
+# bash import smoke test with an isolated HOME (alias + export round-trip)
+TMPHOME=$(mktemp -d)
+printf 'alias smoket="echo SMOKE_ALIAS"\nexport SMOKE_VAR=smoke_value_42\n' > "$TMPHOME/.bashrc"
+OUT=$(HOME="$TMPHOME" ./bin/aswell -c 'aswell bash import >/dev/null; alias smoket; echo "VAL=$SMOKE_VAR"')
+rm -rf "$TMPHOME"
+if ! echo "$OUT" | grep -q "alias smoket="; then
+    echo "[FAIL] bash alias import failed: $OUT"
+    exit 1
+fi
+if ! echo "$OUT" | grep -q "VAL=smoke_value_42"; then
+    echo "[FAIL] bash export import failed: $OUT"
+    exit 1
+fi
+echo "[PASS] aswell bash import (isolated HOME)"
+
+# hash remembers and prints executable paths
+OUT=$(./bin/aswell -c 'hash ls >/dev/null; hash -t ls')
+if [ ! -x "$OUT" ]; then
+    echo "[FAIL] hash -t ls did not print an executable: $OUT"
+    exit 1
+fi
+set +e
+OUT=$(./bin/aswell -c 'hash zz_no_such_cmd_xyz_123' 2>/dev/null)
+STATUS=$?
+set -e
+if [ "$STATUS" -eq 0 ]; then
+    echo "[FAIL] hash accepted an unknown command"
+    exit 1
+fi
+echo "[PASS] hash builtin (remember, -t, reject unknown)"
+
+# umask symbolic set and display round-trip
+OUT=$(./bin/aswell -c 'umask u=rwx,go=; umask')
+if [ "$OUT" != "0077" ]; then
+    echo "[FAIL] symbolic umask set failed: $OUT"
+    exit 1
+fi
+OUT=$(./bin/aswell -c 'umask 022 >/dev/null; umask -S')
+if [ "$OUT" != "u=rwx,g=rx,o=rx" ]; then
+    echo "[FAIL] umask -S display failed: $OUT"
+    exit 1
+fi
+echo "[PASS] umask symbolic set and display"
 
 echo ""
 echo "=================================================="

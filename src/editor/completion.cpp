@@ -14,6 +14,16 @@ static int64_t now_ms() {
     return duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count();
 }
 
+// Ranking key: raw match class dominates, source bonus only breaks ties
+// within the same class. key = raw * 100 + (100 + bonus), so an exact
+// match (raw 0) can never lose to a fuzzier builtin/alias candidate.
+inline int rank_key(int raw_score, int bonus = 0) {
+    return raw_score * 100 + (100 + bonus);
+}
+inline int raw_score(int key) {
+    return key / 100;
+}
+
 bool CompletionEngine::subsequence_match(std::string_view pattern, std::string_view target) {
     if (pattern.empty()) return true;
     std::string lp = str_util::to_lower(pattern);
@@ -64,13 +74,14 @@ void CompletionEngine::rank_and_truncate(
     // Prefer candidates that extend the typed prefix literally: if any
     // prefix matches exist, drop fuzzy-only results to stay predictable.
     bool has_strong = false;
-    for (const auto& [s, c] : scored) {
-        if (s <= 2) { has_strong = true; break; }
+    for (const auto& [key, c] : scored) {
+        (void)c;
+        if (raw_score(key) <= 2) { has_strong = true; break; }
     }
-    for (const auto& [score, cand] : scored) {
+    for (const auto& [key, cand] : scored) {
         if (out.size() >= limit) break;
-        if (has_strong && score > 3) break;
-        if (!prefix.empty() && score >= 100) continue;
+        if (has_strong && raw_score(key) > 3) break;
+        if (!prefix.empty() && raw_score(key) >= 100) continue;
         out.push_back(cand);
     }
 }
@@ -137,7 +148,7 @@ std::vector<CompletionCandidate> CompletionEngine::complete_command(const std::s
         int s = match_score(prefix, name);
         if (s >= 100 && !prefix.empty()) return;
         // Builtins/aliases/functions outrank PATH binaries for identical scores.
-        scored.emplace_back(s + bonus, CompletionCandidate{name, name, desc, false});
+        scored.emplace_back(rank_key(s, bonus), CompletionCandidate{name, name, desc, false});
     };
 
     static const std::vector<std::pair<std::string, std::string>> b_list = {
@@ -179,7 +190,7 @@ std::vector<CompletionCandidate> CompletionEngine::complete_command(const std::s
         std::string desc = (dir.find(".config/aswell/commands") != std::string::npos)
                                ? "custom command"
                                : "command";
-        scored.emplace_back(s, CompletionCandidate{fname, fname, desc, false});
+        scored.emplace_back(rank_key(s), CompletionCandidate{fname, fname, desc, false});
         seen.insert(fname);
         if (scored.size() > 4000) break; // pathological PATH guard
     }
@@ -236,7 +247,7 @@ std::vector<CompletionCandidate> CompletionEngine::complete_path(const std::stri
         int s = match_score(file_prefix, name);
         if (s >= 100 && !file_prefix.empty()) continue;
         std::string result_text = display_base + name + (is_dir ? "/" : "");
-        scored.emplace_back(s, CompletionCandidate{result_text, name + (is_dir ? "/" : ""),
+        scored.emplace_back(rank_key(s), CompletionCandidate{result_text, name + (is_dir ? "/" : ""),
                                                    is_dir ? "directory" : "file", is_dir});
     }
     closedir(dir);
@@ -263,7 +274,7 @@ std::vector<CompletionCandidate> CompletionEngine::complete_variable(const std::
         if (s >= 100 && !var_prefix.empty()) continue;
         std::string text = bare ? k : (braced ? "${" + k + "}" : "$" + k);
         std::string desc = v.value.size() > 24 ? v.value.substr(0, 24) + "..." : v.value;
-        scored.emplace_back(s, CompletionCandidate{text, (bare ? k : "$" + k), desc, false});
+        scored.emplace_back(rank_key(s), CompletionCandidate{text, (bare ? k : "$" + k), desc, false});
     }
     std::vector<CompletionCandidate> out;
     rank_and_truncate(scored, out, var_prefix, 30);
@@ -281,7 +292,7 @@ std::vector<CompletionCandidate> CompletionEngine::complete_git(const std::strin
             std::string branch = ent->d_name;
             int s = match_score(prefix, branch);
             if (s >= 100 && !prefix.empty()) continue;
-            scored.emplace_back(s, CompletionCandidate{branch, branch, "branch", false});
+            scored.emplace_back(rank_key(s), CompletionCandidate{branch, branch, "branch", false});
         }
         closedir(dir);
     }
@@ -336,7 +347,7 @@ std::vector<CompletionCandidate> CompletionEngine::complete_git_args(
         for (const auto& s : kSub) {
             int sc = match_score(prefix, s);
             if (sc >= 100 && !prefix.empty()) continue;
-            scored.emplace_back(sc, CompletionCandidate{s, s, "subcommand", false});
+            scored.emplace_back(rank_key(sc), CompletionCandidate{s, s, "subcommand", false});
         }
         std::vector<CompletionCandidate> out;
         rank_and_truncate(scored, out, prefix, 30);
@@ -498,7 +509,7 @@ std::vector<CompletionCandidate> CompletionEngine::complete(const std::string& b
             for (const auto& s : kSubs) {
                 int sc = match_score(match_word, s);
                 if (sc >= 100 && !match_word.empty()) continue;
-                scored.emplace_back(sc, CompletionCandidate{s, s, "subcommand", false});
+                scored.emplace_back(rank_key(sc), CompletionCandidate{s, s, "subcommand", false});
             }
             std::vector<CompletionCandidate> out;
             rank_and_truncate(scored, out, match_word, 20);
