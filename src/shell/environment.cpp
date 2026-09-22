@@ -393,6 +393,42 @@ void Environment::remove_trap(int signum) {
     traps_.erase(signum);
 }
 
+void Environment::remember_command(const std::string& name, const std::string& path) const {
+    auto it = command_hash_.find(name);
+    int hits = (it == command_hash_.end()) ? 0 : it->second.second;
+    command_hash_[name] = {path, hits};
+}
+
+bool Environment::get_remembered_command(const std::string& name, std::string& out_path) const {
+    auto it = command_hash_.find(name);
+    if (it == command_hash_.end()) return false;
+    // Validate: drop the entry if it went stale (uninstalled, chmod -x).
+    if (access(it->second.first.c_str(), X_OK) != 0) {
+        command_hash_.erase(it);
+        return false;
+    }
+    out_path = it->second.first;
+    return true;
+}
+
+void Environment::forget_command(const std::string& name) {
+    command_hash_.erase(name);
+}
+
+void Environment::clear_command_hash() {
+    command_hash_.clear();
+}
+
+std::map<std::string, std::pair<std::string, int>> Environment::get_command_hash() const {
+    std::map<std::string, std::pair<std::string, int>> result;
+    for (const auto& [k, v] : command_hash_) {
+        if (access(v.first.c_str(), X_OK) == 0) {
+            result[k] = v;
+        }
+    }
+    return result;
+}
+
 std::string Environment::find_in_path(const std::string& cmd, const std::string& override_path) const {
     if (cmd.find('/') != std::string::npos) {
         if (access(cmd.c_str(), X_OK) == 0) {
@@ -401,22 +437,37 @@ std::string Environment::find_in_path(const std::string& cmd, const std::string&
         return "";
     }
 
+    // Fast path: validated hash-table hit (skips directory scans).
+    // Bypassed for explicit PATH overrides such as `command -p`.
+    if (override_path.empty()) {
+        std::string remembered;
+        if (get_remembered_command(cmd, remembered)) {
+            auto it = command_hash_.find(cmd);
+            if (it != command_hash_.end()) it->second.second++;
+            return remembered;
+        }
+    }
+
     std::string path_var = override_path.empty() ? get_var("PATH") : override_path;
     auto paths = str_util::split(path_var, ':');
     for (const auto& p : paths) {
         std::string full_path = p.empty() ? cmd : (p + "/" + cmd);
         if (access(full_path.c_str(), X_OK) == 0) {
+            if (override_path.empty()) remember_command(cmd, full_path);
             return full_path;
         }
         if (access((full_path + ".sh").c_str(), X_OK) == 0) {
+            if (override_path.empty()) remember_command(cmd, full_path + ".sh");
             return full_path + ".sh";
         }
         // If in user custom commands folder, allow readable scripts
         if (p.find("/.config/aswell/commands") != std::string::npos || p.find("/.config/aswell/bin") != std::string::npos) {
             if (access(full_path.c_str(), R_OK) == 0) {
+                if (override_path.empty()) remember_command(cmd, full_path);
                 return full_path;
             }
             if (access((full_path + ".sh").c_str(), R_OK) == 0) {
+                if (override_path.empty()) remember_command(cmd, full_path + ".sh");
                 return full_path + ".sh";
             }
         }

@@ -104,6 +104,15 @@ public:
     // Path resolution
     std::string find_in_path(const std::string& cmd, const std::string& override_path = "") const;
 
+    // Command hash table (see `hash` builtin): remembers resolved paths so
+    // repeated lookups skip directory scans. Entries are validated with
+    // access() on every use, so stale entries self-heal; `hash -r` clears.
+    void remember_command(const std::string& name, const std::string& path) const;
+    bool get_remembered_command(const std::string& name, std::string& out_path) const;
+    void forget_command(const std::string& name);
+    void clear_command_hash();
+    std::map<std::string, std::pair<std::string, int>> get_command_hash() const;
+
 private:
     std::unordered_map<std::string, Variable> global_vars_;
     std::vector<std::unordered_map<std::string, Variable>> local_scopes_;
@@ -112,6 +121,8 @@ private:
     std::vector<std::string> current_positional_;
 
     std::unordered_map<std::string, std::string> aliases_;
+    // Mutable so the const find_in_path() can populate/validate the cache.
+    mutable std::unordered_map<std::string, std::pair<std::string, int>> command_hash_;
     std::unordered_map<std::string, std::shared_ptr<FunctionDefNode>> functions_;
     std::unordered_map<int, std::string> traps_;
     std::vector<std::string> dir_stack_;

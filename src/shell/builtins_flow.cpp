@@ -157,24 +157,216 @@ int Builtins::builtin_trap(const std::vector<std::string>& args, Environment& en
     return 0;
 }
 
-int Builtins::builtin_hash(const std::vector<std::string>& /*args*/, Environment& /*env*/) {
-    return 0;
-}
+int Builtins::builtin_hash(const std::vector<std::string>& args, Environment& env) {
+    bool opt_t = false;   // print paths only
+    bool opt_d = false;   // forget entries
+    std::string forced_path;
+    std::vector<std::string> names;
 
-int Builtins::builtin_umask(const std::vector<std::string>& args, Environment& /*env*/) {
-    if (args.size() <= 1) {
-        mode_t old_mask = umask(0);
-        umask(old_mask);
-        std::cout << std::oct << std::setfill('0') << std::setw(4) << old_mask << std::dec << "\n";
+    for (size_t i = 1; i < args.size(); ++i) {
+        const std::string& a = args[i];
+        if (a == "--") {
+            for (++i; i < args.size(); ++i) names.push_back(args[i]);
+            break;
+        } else if (a == "-r") {
+            env.clear_command_hash();
+            return 0;
+        } else if (a == "-d") {
+            opt_d = true;
+        } else if (a == "-t") {
+            opt_t = true;
+        } else if (a == "-p" && i + 1 < args.size()) {
+            forced_path = args[++i];
+        } else if (a.size() > 1 && a[0] == '-') {
+            std::cerr << "aswell: hash: -" << a[1] << ": invalid option\n";
+            return 1;
+        } else {
+            names.push_back(a);
+        }
+    }
+
+    // `hash -p /custom/path name`: seed the table directly.
+    if (!forced_path.empty()) {
+        if (names.empty()) {
+            std::cerr << "aswell: hash: -p: option requires a name argument\n";
+            return 1;
+        }
+        if (access(forced_path.c_str(), X_OK) != 0) {
+            std::cerr << "aswell: hash: " << forced_path << ": " << std::strerror(errno) << "\n";
+            return 1;
+        }
+        for (const auto& n : names) env.remember_command(n, forced_path);
         return 0;
     }
 
-    try {
-        mode_t mask = static_cast<mode_t>(std::stoul(args[1], nullptr, 8));
-        umask(mask);
-    } catch (...) {
-        std::cerr << "aswell: umask: invalid octal number\n";
-        return 1;
+    if (opt_d) {
+        int ret = 0;
+        auto table = env.get_command_hash();
+        for (const auto& n : names) {
+            if (table.find(n) == table.end()) {
+                std::cerr << "aswell: hash: " << n << ": not found\n";
+                ret = 1;
+            } else {
+                env.forget_command(n);
+            }
+        }
+        if (names.empty()) {
+            std::cerr << "aswell: hash: -d: option requires an argument\n";
+            return 1;
+        }
+        return ret;
+    }
+
+    if (names.empty()) {
+        auto table = env.get_command_hash();
+        if (table.empty()) {
+            std::cout << "hash: hash table empty\n";
+            return 0;
+        }
+        if (!opt_t) std::cout << "hits\tcommand\n";
+        for (const auto& [name, entry] : table) {
+            if (opt_t) {
+                std::cout << entry.first << "\n";
+            } else {
+                std::cout << std::setw(4) << entry.second << "\t" << entry.first << "\n";
+            }
+        }
+        return 0;
+    }
+
+    int ret = 0;
+    for (const auto& n : names) {
+        if (opt_t) {
+            std::string path;
+            if (env.get_remembered_command(n, path)) {
+                std::cout << path << "\n";
+            } else {
+                std::cerr << "aswell: hash: " << n << ": not found\n";
+                ret = 1;
+            }
+            continue;
+        }
+        // Resolving populates the shared table via find_in_path().
+        std::string path = env.find_in_path(n);
+        if (path.empty()) {
+            std::cerr << "aswell: hash: " << n << ": not found\n";
+            ret = 1;
+        }
+    }
+    return ret;
+}
+
+namespace {
+mode_t current_umask_value() {
+    mode_t old_mask = umask(0);
+    umask(old_mask);
+    return old_mask;
+}
+
+std::string format_symbolic_umask(mode_t mask) {
+    std::string out;
+    const char* classes = "ugo";
+    for (int c = 0; c < 3; ++c) {
+        if (c > 0) out += ',';
+        out += classes[static_cast<size_t>(c)];
+        out += '=';
+        int bits = (static_cast<int>(mask) >> ((2 - c) * 3)) & 7;
+        int perms = (~bits) & 7;
+        if (perms & 4) out += 'r';
+        if (perms & 2) out += 'w';
+        if (perms & 1) out += 'x';
+    }
+    return out;
+}
+
+// Parse symbolic modes like "u=rwx,g=rx,o=", "a+rx", "go-w".
+// Returns false on any invalid clause.
+bool parse_symbolic_umask(const std::string& spec, mode_t current, mode_t& out_mask) {
+    int m = static_cast<int>(current);
+    for (const std::string& clause : str_util::split(spec, ',')) {
+        if (clause.empty()) return false;
+        size_t i = 0;
+        int who = 0; // bit 0=u, 1=g, 2=o
+        while (i < clause.size()) {
+            char c = clause[i];
+            if (c == 'u') who |= 1;
+            else if (c == 'g') who |= 2;
+            else if (c == 'o') who |= 4;
+            else if (c == 'a') who |= 7;
+            else break;
+            ++i;
+        }
+        if (who == 0) who = 7; // empty who-list means "all"
+        if (i >= clause.size()) return false;
+        char op = clause[i++];
+        if (op != '+' && op != '-' && op != '=') return false;
+        int perms = 0;
+        while (i < clause.size()) {
+            char c = clause[i++];
+            if (c == 'r') perms |= 4;
+            else if (c == 'w') perms |= 2;
+            else if (c == 'x') perms |= 1;
+            else return false;
+        }
+        for (int c = 0; c < 3; ++c) {
+            if (!(who & (1 << c))) continue;
+            int shift = (2 - c) * 3;
+            int bits = (perms << shift) & 0777;
+            int cmask = 7 << shift;
+            if (op == '=') m = (m & ~cmask) | ((~bits) & cmask);
+            else if (op == '+') m &= ~bits; // adding permission clears mask bits
+            else m |= bits;                 // removing permission sets mask bits
+        }
+    }
+    out_mask = static_cast<mode_t>(m & 0777);
+    return true;
+}
+
+bool is_octal_umask(const std::string& s) {
+    if (s.empty() || s.size() > 4) return false;
+    for (char c : s) {
+        if (c < '0' || c > '7') return false;
+    }
+    return true;
+}
+} // namespace
+
+int Builtins::builtin_umask(const std::vector<std::string>& args, Environment& /*env*/) {
+    bool symbolic = false;
+    size_t idx = 1;
+    if (idx < args.size() && args[idx] == "-S") {
+        symbolic = true;
+        ++idx;
+    }
+
+    if (idx >= args.size()) {
+        mode_t mask = current_umask_value();
+        if (symbolic) {
+            std::cout << format_symbolic_umask(mask) << "\n";
+        } else {
+            std::cout << std::oct << std::setfill('0') << std::setw(4) << mask << std::dec << "\n";
+        }
+        return 0;
+    }
+
+    const std::string& spec = args[idx];
+    mode_t new_mask = 0;
+    if (is_octal_umask(spec)) {
+        try {
+            new_mask = static_cast<mode_t>(std::stoul(spec, nullptr, 8));
+        } catch (...) {
+            std::cerr << "aswell: umask: invalid octal number\n";
+            return 1;
+        }
+    } else {
+        if (!parse_symbolic_umask(spec, current_umask_value(), new_mask)) {
+            std::cerr << "aswell: umask: '" << spec << "': invalid symbolic mode\n";
+            return 1;
+        }
+    }
+    umask(new_mask);
+    if (symbolic) {
+        std::cout << format_symbolic_umask(new_mask) << "\n";
     }
     return 0;
 }
