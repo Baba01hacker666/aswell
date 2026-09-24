@@ -908,6 +908,8 @@ int Builtins::builtin_help(const std::vector<std::string>& /*args*/) {
               << "  color [opt] <col>  Output colored text with TrueColor styling\n"
               << "  test [expr] / [ ]  Evaluate conditional expression\n"
               << "  read [-r] [-p pr]  Read a line from stdin into variables\n"
+              << "  getopts opts name  Parse positional parameters into options ($OPTARG/$OPTIND)\n"
+              << "  stty [-a] [setting] Display or change terminal line settings\n"
               << "  exit [n]           Exit shell with status n\n"
               << "  true / false       Always succeed / fail\n"
               << "  set [-e -u -x -v]  Set or display shell options and variables\n"

@@ -37,6 +37,10 @@ Environment::Environment() {
     if (!has_var("IFS")) {
         set_var("IFS", " \t\n", false);
     }
+
+    // Fresh-shell option-parsing state (bash also starts with OPTIND=1).
+    set_var("OPTIND", "1", false);
+    set_var("OPTERR", "1", false);
     
     const char* home_env = std::getenv("HOME");
     std::string home_str = home_env ? home_env : "/root";

@@ -11,7 +11,7 @@ bool Builtins::is_builtin(const std::string& name) {
         "type", "wait", "jobs", "fg", "bg", "kill", "hash",
         "umask", "local", "break", "continue", "return",
         "true", "false", ":", "help", "history", "aswell", "color",
-        "dirs", "pushd", "popd", "command"
+        "dirs", "pushd", "popd", "command", "getopts", "stty"
     };
     return builtins.find(name) != builtins.end();
 }
@@ -38,6 +38,8 @@ int Builtins::execute(const std::string& name,
     if (name == "readonly") return builtin_readonly(args, env);
     if (name == "alias") return builtin_alias(args, env);
     if (name == "unalias") return builtin_unalias(args, env);
+    if (name == "getopts") return builtin_getopts(args, env);
+    if (name == "stty") return builtin_stty(args, env);
     if (name == "eval") return builtin_eval(args, env, executor);
     if (name == "exec") return builtin_exec(args, env);
     if (name == "read") return builtin_read(args, env);

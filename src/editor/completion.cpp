@@ -159,6 +159,8 @@ std::vector<CompletionCandidate> CompletionEngine::complete_command(const std::s
         {"export", "builtin: export variables"}, {"readonly", "builtin: mark readonly"},
         {"alias", "builtin: define alias"}, {"unalias", "builtin: remove alias"},
         {"eval", "builtin: evaluate code"}, {"exec", "builtin: replace process"},
+        {"getopts", "builtin: parse command options"},
+        {"stty", "builtin: terminal line settings"},
         {"read", "builtin: read line"}, {"source", "builtin: execute script file"},
         {".", "builtin: execute script file"}, {"shift", "builtin: shift arguments"},
         {"trap", "builtin: signal handler"}, {"type", "builtin: describe command"},

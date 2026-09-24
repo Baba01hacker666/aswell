@@ -103,7 +103,6 @@ public:
 
     // Path resolution
     std::string find_in_path(const std::string& cmd, const std::string& override_path = "") const;
-
     // Command hash table (see `hash` builtin): remembers resolved paths so
     // repeated lookups skip directory scans. Entries are validated with
     // access() on every use, so stale entries self-heal; `hash -r` clears.
@@ -112,6 +111,14 @@ public:
     void forget_command(const std::string& name);
     void clear_command_hash();
     std::map<std::string, std::pair<std::string, int>> get_command_hash() const;
+
+    // getopts() internal parse state: cluster position within the current
+    // word (0 = fetch a new word) and the OPTIND value seen last call
+    // (a user reassignment resets cluster tracking).
+    size_t get_getopts_nextchar() const { return getopts_nextchar_; }
+    void set_getopts_nextchar(size_t n) { getopts_nextchar_ = n; }
+    long get_getopts_last_ind() const { return getopts_last_ind_; }
+    void set_getopts_last_ind(long i) { getopts_last_ind_ = i; }
 
 private:
     std::unordered_map<std::string, Variable> global_vars_;
@@ -123,6 +130,8 @@ private:
     std::unordered_map<std::string, std::string> aliases_;
     // Mutable so the const find_in_path() can populate/validate the cache.
     mutable std::unordered_map<std::string, std::pair<std::string, int>> command_hash_;
+    size_t getopts_nextchar_ = 0;
+    long getopts_last_ind_ = -1;
     std::unordered_map<std::string, std::shared_ptr<FunctionDefNode>> functions_;
     std::unordered_map<int, std::string> traps_;
     std::vector<std::string> dir_stack_;

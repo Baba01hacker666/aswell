@@ -21,6 +21,12 @@ Aswell implements the IEEE Std 1003.1 (POSIX) Shell & Utilities specification.
 - **Interactive History Expansion**: `!!`, `!$`, `!^`, `!*`, `!-n`, `!n`, `!prefix`, `!?query?`, and word modifiers `:$`, `:^`, `:*`.
 - **Directory Stack Subsystem**: `pushd`, `popd`, `dirs` with `-c` (clear), `-v` (indexed display), `-p` (per-line), `+N` (rotation and indexed removal).
 - **Builtin Utilities**:
-  - POSIX standard: `command` (`-p`, `-v`, `-V`), `cd`, `pwd`, `echo`, `printf`, `test`/`[`, `export`, `readonly`, `set`, `unset`, `eval`, `exec`, `read`, `source` / `.`, `type`, `kill`, `umask`, `alias`, `unalias`, `exit`, `history` (`-c`, `-d <offset>`, `<count>`).
+  - POSIX standard: `command` (`-p`, `-v`, `-V`), `cd`, `pwd`, `echo`, `printf`, `test`/`[`, `export`, `readonly`, `set`, `unset`, `eval`, `exec`, `read`, `getopts` (with `OPTARG`/`OPTIND`/`OPTERR`, clustering, silent `:` mode), `stty` (flags, control chars, rows/cols, speed, `-a`/`-g`/`-F`), `source` / `.`, `type`, `kill`, `umask` (octal + symbolic `-S`), `alias`, `unalias`, `exit`, `history` (`-c`, `-d <offset>`, `<count>`).
   - Job control: `jobs`, `fg`, `bg`, `wait`.
   - Enhanced styling: `color` (TrueColor, 256-color, named palettes, gradients, rainbow, streaming stdin pipelines).
+
+## Known Gaps (not yet implemented)
+
+- `fc` builtin, `select` compound command, `$ENV` sourcing, `CDPATH` lookup, `time` keyword, `set -o` listing.
+- `read` supports `-r`/`-p` only (no `-s`, `-t`, `-n`, `-a`, `-d`, `-u`).
+- `hash`/`umask`/`trap` cover common flags; `command -p` uses a fixed default path.

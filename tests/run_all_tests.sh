@@ -22,6 +22,8 @@ $CXX $CXXFLAGS -Iinclude tests/test_history.cpp src/editor/history.o -o bin/test
 $CXX $CXXFLAGS -Iinclude tests/test_bashcompat.cpp src/shell/*.o src/editor/*.o src/ui/*.o src/config/*.o -o bin/test_bashcompat $LDFLAGS
 $CXX $CXXFLAGS -Iinclude tests/test_completion.cpp src/shell/*.o src/editor/*.o src/ui/*.o src/config/*.o -o bin/test_completion $LDFLAGS
 $CXX $CXXFLAGS -Iinclude tests/test_cd_hash_umask.cpp src/shell/*.o src/editor/*.o src/ui/*.o src/config/*.o -o bin/test_cd_hash_umask $LDFLAGS
+$CXX $CXXFLAGS -Iinclude tests/test_getopts.cpp src/shell/*.o src/editor/*.o src/ui/*.o src/config/*.o -o bin/test_getopts $LDFLAGS
+$CXX $CXXFLAGS -Iinclude tests/test_stty.cpp src/shell/*.o src/editor/*.o src/ui/*.o src/config/*.o -o bin/test_stty $LDFLAGS
 
 echo "2. Running Unit Tests..."
 ./bin/test_lexer
@@ -33,6 +35,8 @@ echo "2. Running Unit Tests..."
 ./bin/test_bashcompat
 ./bin/test_completion
 ./bin/test_cd_hash_umask
+./bin/test_getopts
+./bin/test_stty
 
 echo ""
 echo "3. Running POSIX Compatibility Script Suite..."
@@ -242,7 +246,7 @@ fi
 echo "[PASS] history builtin (-c clear and management)"
 
 echo ""
-echo "7. Running Bash Compat, Smart CD, Hash & Umask Tests..."
+echo "7. Running Bash Compat, Smart CD, Hash, Umask & Getopts Tests..."
 
 # Strict cd in scripts (POSIX): partial names must NOT resolve non-interactively
 set +e
@@ -298,6 +302,39 @@ if [ "$OUT" != "u=rwx,g=rx,o=rx" ]; then
     exit 1
 fi
 echo "[PASS] umask symbolic set and display"
+
+# getopts end-to-end: classic while-loop over positional parameters
+OUT=$(./bin/aswell -c 'while getopts "ab:" opt; do case $opt in a) echo GOT_A;; b) echo "GOT_B:$OPTARG";; ?) echo BAD;; :) echo MISSING;; esac; done; echo "IND=$OPTIND"' prog -a -bx -c)
+echo "$OUT" | grep -q "GOT_A" || { echo "[FAIL] getopts flag -a: $OUT"; exit 1; }
+echo "$OUT" | grep -q "GOT_B:x" || { echo "[FAIL] getopts attached arg: $OUT"; exit 1; }
+echo "$OUT" | grep -q "BAD" || { echo "[FAIL] getopts invalid option: $OUT"; exit 1; }
+echo "$OUT" | grep -q "IND=4" || { echo "[FAIL] getopts final OPTIND: $OUT"; exit 1; }
+OUT=$(./bin/aswell -c 'while getopts ":ab:" opt; do case $opt in a) echo A;; b) echo "B:$OPTARG";; :) echo "MISS:$OPTARG";; ?) echo "BAD:$OPTARG";; esac; done' prog -a -z -b)
+echo "$OUT" | grep -q "BAD:z" || { echo "[FAIL] getopts silent invalid: $OUT"; exit 1; }
+echo "$OUT" | grep -q "MISS:b" || { echo "[FAIL] getopts silent missing arg: $OUT"; exit 1; }
+echo "[PASS] getopts option parsing (flags, args, errors, OPTIND)"
+
+# stty builtin: no-tty failure must be clean, help and errors sane
+set +e
+./bin/aswell -c 'stty' < /dev/null 2>/dev/null
+STATUS=$?
+set -e
+if [ "$STATUS" -eq 0 ]; then
+    echo "[FAIL] stty without a tty unexpectedly succeeded"
+    exit 1
+fi
+OUT=$(./bin/aswell -c 'stty --help')
+echo "$OUT" | grep -q "terminal line settings" || { echo "[FAIL] stty --help: $OUT"; exit 1; }
+set +e
+OUT=$(./bin/aswell -c 'stty bogusflag_xyz' < /dev/null 2>&1)
+STATUS=$?
+set -e
+if [ "$STATUS" -eq 0 ]; then
+    echo "[FAIL] stty bogus operand unexpectedly succeeded"
+    exit 1
+fi
+echo "$OUT" | grep -q "invalid argument" || { echo "[FAIL] stty invalid operand: $OUT"; exit 1; }
+echo "[PASS] stty builtin (no-tty failure, help, invalid operand)"
 
 echo ""
 echo "=================================================="

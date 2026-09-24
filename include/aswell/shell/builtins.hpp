@@ -41,6 +41,8 @@ private:
     static int builtin_readonly(const std::vector<std::string>& args, Environment& env);
     static int builtin_alias(const std::vector<std::string>& args, Environment& env);
     static int builtin_unalias(const std::vector<std::string>& args, Environment& env);
+    static int builtin_getopts(const std::vector<std::string>& args, Environment& env);
+    static int builtin_stty(const std::vector<std::string>& args, Environment& env);
     static int builtin_eval(const std::vector<std::string>& args, Environment& env, Executor& executor);
     static int builtin_exec(const std::vector<std::string>& args, Environment& env);
     static int builtin_read(const std::vector<std::string>& args, Environment& env);

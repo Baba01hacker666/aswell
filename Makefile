@@ -22,6 +22,7 @@ SRCS = $(wildcard src/shell/*.cpp) \
 
 OBJS = $(SRCS:.cpp=.o)
 DEPS = $(OBJS:.o=.d)
+DEMO_DEPS = examples/demo_engine.d
 TARGET = bin/aswell
 DEMO_TARGET = bin/demo_engine
 DEMO_OBJS = $(filter-out src/main.o, $(OBJS)) examples/demo_engine.o
@@ -45,6 +46,9 @@ bin:
 %.o: %.cpp
 	$(CXX) $(CXXFLAGS) -MMD -MP -c $< -o $@
 
+examples/demo_engine.o: examples/demo_engine.cpp
+	$(CXX) $(CXXFLAGS) -MMD -MP -c $< -o $@
+
 clean:
 	rm -f $(OBJS) $(DEPS) $(TARGET) examples/demo_engine.o examples/demo_engine.d $(DEMO_TARGET)
 
@@ -52,7 +56,7 @@ install: $(TARGET)
 	install -d /usr/local/bin
 	install -m 755 $(TARGET) /usr/local/bin/aswell
 
-test: $(TARGET)
+test: $(TARGET) demo
 	CXX="$(CXX)" CXXFLAGS="$(CXXFLAGS)" LDFLAGS="$(LDFLAGS)" ./tests/run_all_tests.sh
 
 test-hardened:
@@ -60,4 +64,4 @@ test-hardened:
 
 .PHONY: all harden clean install test test-hardened demo
 
--include $(DEPS)
+-include $(DEPS) $(DEMO_DEPS)
