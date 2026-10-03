@@ -930,8 +930,10 @@ int Builtins::builtin_help(const std::vector<std::string>& /*args*/) {
               << "  eval / exec / source / . / shift / local / break / continue / return\n"
               << "  aswell bash        Re-import ~/.bashrc aliases and env (import, status, on, off)\n"
               << "  aswell color       Print colored text or inspect palettes\n"
-              << "  aswell theme       Switch or list visual themes\n"
-              << "  aswell config      Open interactive configuration TUI\n";
+              << "  aswell config      Settings hub: list | get | set | toggle | unset | help | edit (TUI)\n"
+              << "  aswell theme       list | set <name> | preview [--all] | show | new <name> | reset\n"
+              << "  aswell doctor      Validate config.txt, theme stylesheet, prompt.html & environment\n"
+              << "  aswell reload      Re-read settings, theme and prompt template (edits apply live)\n";
     return 0;
 }
 

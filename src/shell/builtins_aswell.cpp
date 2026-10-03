@@ -1,5 +1,6 @@
 #include "aswell/shell/builtins.hpp"
 #include "aswell/config/config.hpp"
+#include "aswell/config/settings_cli.hpp"
 #include "aswell/shell/bash_compat.hpp"
 #include "aswell/ui/template_engine.hpp"
 #include "aswell/ui/terminal.hpp"
@@ -14,7 +15,9 @@ namespace aswell {
 int Builtins::builtin_aswell(const std::vector<std::string>& args, Environment& env, Executor& executor) {
     if (args.size() <= 1) {
         std::cout << SHELL_BANNER << "\n"
-                  << "Type 'aswell help' for commands, 'aswell color' for colored output, or 'aswell theme' to configure themes.\n";
+                  << "Settings:   aswell config list | aswell config set <key> <value> | aswell config help\n"
+                  << "Themes:     aswell theme list | aswell theme preview --all | aswell theme set <name>\n"
+                  << "Diagnostics: aswell doctor        Colors: aswell color, color rainbow <text>\n";
         return 0;
     }
 
@@ -35,141 +38,20 @@ int Builtins::builtin_aswell(const std::vector<std::string>& args, Environment& 
         }
         return builtin_color(sub_args, env);
     }
-    if (sub == "theme") {
-        if (args.size() == 2 || (args.size() == 3 && args[2] == "list")) {
-            std::cout << "\033[1;34mAvailable Aswell Themes:\033[0m\n"
-                      << "  * \033[1;32mmodern\033[0m     - Clean, elegant unicode boxes, branch glyphs, subtle colors\n"
-                      << "  * \033[1;35mcyberpunk\033[0m  - Neon cyan/magenta glowing accents, sharp brackets\n"
-                      << "  * \033[1;36mnord\033[0m       - Arctic blue, frost, muted Scandinavian aesthetic\n"
-                      << "  * \033[1;37mminimal\033[0m    - Monochrome single-character prompt, blazing speed\n"
-                      << "  * \033[1;31mdracula\033[0m    - Vampire dark theme with purple and emerald highlights\n"
-                      << "  * \033[1;33mpowerline\033[0m  - Segmented status arrows with contrasting backgrounds\n";
-            return 0;
-        }
-        // Support: aswell theme set <name>
-        if (args.size() >= 4 && args[2] == "set") {
-            env.set_var("ASWELL_THEME", args[3], true);
-            std::cout << "Aswell theme changed to: " << args[3] << "\n";
-            return 0;
-        }
-        // Support: aswell theme <name>  (without "set" keyword)
-        if (args.size() >= 3) {
-            env.set_var("ASWELL_THEME", args[2], true);
-            std::cout << "Aswell theme changed to: " << args[2] << "\n";
-            return 0;
-        }
+    // Themes and settings are handled by the shared customization hub
+    // (SettingsCli), which is also what `aswell theme` / `aswell config` call
+    // before the shell starts. One implementation, no drift between the two.
+    if (sub == "theme" || sub == "themes") {
+        std::vector<std::string> theme_args;
+        theme_args.push_back("theme");
+        for (size_t i = 2; i < args.size(); ++i) theme_args.push_back(args[i]);
+        return SettingsCli::handle_theme(theme_args, env);
     }
-    if (sub == "config") {
-        if (args.size() == 2 || (args.size() >= 3 && args[2] == "list")) {
-            std::cout << "\033[1;34mAswell Configuration:\033[0m\n"
-                      << "  * \033[1;32mtheme\033[0m    - Switch or list visual themes\n"
-                      << "  * \033[1;32musername\033[0m - Set or view custom prompt username\n"
-                      << "  * \033[1;32mhostname\033[0m - Set or view custom prompt hostname\n"
-                      << "  * \033[1;32mcustom\033[0m   - Manage custom commands\n"
-                      << "  * \033[1;32mtemplate\033[0m - Manage prompt templates\n"
-                      << "  * \033[1;32mhooks\033[0m    - Manage dynamic script hooks\n"
-                      << "\nUsage: aswell config [username <name> | hostname <name> | theme <name> | path]\n";
-            return 0;
-        }
-        if (args.size() >= 3 && args[2] == "path") {
-            std::cout << aswell::ConfigManager::get_config_dir() << "\n";
-            return 0;
-        }
-        if (args.size() >= 3 && (args[2] == "username" || args[2] == "user")) {
-            ShellConfig cfg = ConfigManager::load();
-            if (args.size() >= 4) {
-                std::string new_user = args[3];
-                if (new_user == "default" || new_user == "reset" || new_user == "none" || new_user == "\"\"" || new_user == "''") {
-                    cfg.custom_username.clear();
-                    ConfigManager::save(cfg);
-                    env.unset_var("ASWELL_USER");
-                    std::cout << "Custom username reset to system default.\n";
-                } else {
-                    cfg.custom_username = new_user;
-                    ConfigManager::save(cfg);
-                    env.set_var("ASWELL_USER", new_user, true);
-                    std::cout << "Custom username set to: \033[1;32m" << new_user << "\033[0m\n";
-                }
-            } else {
-                std::string cur_user = !cfg.custom_username.empty() ? cfg.custom_username : (env.has_var("USER") ? env.get_var("USER") : "user");
-                std::cout << "Current username: \033[1;32m" << cur_user << "\033[0m"
-                          << (!cfg.custom_username.empty() ? " (custom override)" : "") << "\n";
-            }
-            return 0;
-        }
-        if (args.size() >= 3 && (args[2] == "hostname" || args[2] == "host")) {
-            ShellConfig cfg = ConfigManager::load();
-            if (args.size() >= 4) {
-                std::string new_host = args[3];
-                if (new_host == "default" || new_host == "reset" || new_host == "none" || new_host == "\"\"" || new_host == "''") {
-                    cfg.custom_hostname.clear();
-                    ConfigManager::save(cfg);
-                    env.unset_var("ASWELL_HOSTNAME");
-                    std::cout << "Custom hostname reset to system default.\n";
-                } else {
-                    cfg.custom_hostname = new_host;
-                    ConfigManager::save(cfg);
-                    env.set_var("ASWELL_HOSTNAME", new_host, true);
-                    std::cout << "Custom hostname set to: \033[1;32m" << new_host << "\033[0m\n";
-                }
-            } else {
-                std::string cur_host = !cfg.custom_hostname.empty() ? cfg.custom_hostname : (env.has_var("HOSTNAME") ? env.get_var("HOSTNAME") : "localhost");
-                std::cout << "Current hostname: \033[1;32m" << cur_host << "\033[0m"
-                          << (!cfg.custom_hostname.empty() ? " (custom override)" : "") << "\n";
-            }
-            return 0;
-        }
-        if (args.size() >= 3 && args[2] == "set") {
-            if (args.size() >= 5 && (args[3] == "username" || args[3] == "user")) {
-                ShellConfig cfg = ConfigManager::load();
-                std::string val = args[4];
-                if (val == "default" || val == "reset" || val == "none" || val == "\"\"" || val == "''") {
-                    cfg.custom_username.clear();
-                    ConfigManager::save(cfg);
-                    env.unset_var("ASWELL_USER");
-                    std::cout << "Custom username reset to system default.\n";
-                } else {
-                    cfg.custom_username = val;
-                    ConfigManager::save(cfg);
-                    env.set_var("ASWELL_USER", val, true);
-                    std::cout << "Custom username set to: \033[1;32m" << val << "\033[0m\n";
-                }
-                return 0;
-            }
-            if (args.size() >= 5 && (args[3] == "hostname" || args[3] == "host")) {
-                ShellConfig cfg = ConfigManager::load();
-                std::string val = args[4];
-                if (val == "default" || val == "reset" || val == "none" || val == "\"\"" || val == "''") {
-                    cfg.custom_hostname.clear();
-                    ConfigManager::save(cfg);
-                    env.unset_var("ASWELL_HOSTNAME");
-                    std::cout << "Custom hostname reset to system default.\n";
-                } else {
-                    cfg.custom_hostname = val;
-                    ConfigManager::save(cfg);
-                    env.set_var("ASWELL_HOSTNAME", val, true);
-                    std::cout << "Custom hostname set to: \033[1;32m" << val << "\033[0m\n";
-                }
-                return 0;
-            }
-        }
-        if (args.size() >= 3 && args[2] == "theme") {
-            if (args.size() >= 4) {
-                // Either "aswell config theme set <name>" or "aswell config theme <name>"
-                if (args[3] == "set" && args.size() >= 5) {
-                    env.set_var("ASWELL_THEME", args[4], true);
-                    std::cout << "Aswell theme changed to: " << args[4] << "\n";
-                } else {
-                    // "aswell config theme <name>" or "aswell config theme set <name>" with single arg
-                    env.set_var("ASWELL_THEME", args[3], true);
-                    std::cout << "Aswell theme changed to: " << args[3] << "\n";
-                }
-            } else {
-                // "aswell config theme" - show current theme
-                std::cout << "Current theme: " << env.get_var("ASWELL_THEME") << "\n";
-            }
-            return 0;
-        }
+    if (sub == "config" || sub == "settings") {
+        std::vector<std::string> cfg_args;
+        cfg_args.push_back("config");
+        for (size_t i = 2; i < args.size(); ++i) cfg_args.push_back(args[i]);
+        return SettingsCli::handle_config(cfg_args, env);
     }
     if (sub == "bash" || sub == "bashrc") {
         std::string action = (args.size() >= 3) ? args[2] : "status";
@@ -383,6 +265,25 @@ int Builtins::builtin_aswell(const std::vector<std::string>& args, Environment& 
         return 0;
     }
 
+    if (sub == "reload") {
+        return SettingsCli::handle_reload(args, env);
+    }
+    if (sub == "doctor" || sub == "check" || sub == "validate") {
+        std::vector<std::string> doctor_args;
+        doctor_args.push_back("doctor");
+        for (size_t i = 2; i < args.size(); ++i) doctor_args.push_back(args[i]);
+        return SettingsCli::handle_doctor(doctor_args, env);
+    }
+    if (sub == "set") {
+        // Shortcut: `aswell set <key> <value>` == `aswell config set ...`
+        std::vector<std::string> cfg_args = {"config", "set"};
+        for (size_t i = 2; i < args.size(); ++i) cfg_args.push_back(args[i]);
+        return SettingsCli::handle_config(cfg_args, env);
+    }
+    if (sub == "usage" || sub == "--usage") {
+        SettingsCli::print_help();
+        return 0;
+    }
     std::cout << "Unknown aswell command: " << sub << ". Run 'aswell help' for options.\n";
     return 1;
 }
