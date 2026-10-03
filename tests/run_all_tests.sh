@@ -28,6 +28,7 @@ $CXX $CXXFLAGS -Iinclude tests/test_cd_hash_umask.cpp src/shell/*.o src/editor/*
 $CXX $CXXFLAGS -Iinclude tests/test_getopts.cpp src/shell/*.o src/editor/*.o src/ui/*.o src/config/*.o -o bin/test_getopts $LDFLAGS
 $CXX $CXXFLAGS -Iinclude tests/test_stty.cpp src/shell/*.o src/editor/*.o src/ui/*.o src/config/*.o -o bin/test_stty $LDFLAGS
 $CXX $CXXFLAGS -Iinclude tests/test_config.cpp src/shell/*.o src/editor/*.o src/ui/*.o src/config/*.o src/plugin/*.o -o bin/test_config $LDFLAGS
+$CXX $CXXFLAGS -Iinclude tests/test_features.cpp src/shell/*.o src/editor/*.o src/ui/*.o src/config/*.o src/plugin/*.o -o bin/test_features $LDFLAGS
 
 echo "2. Running Unit Tests..."
 ./bin/test_lexer
@@ -42,6 +43,7 @@ echo "2. Running Unit Tests..."
 ./bin/test_getopts
 ./bin/test_stty
 ./bin/test_config
+./bin/test_features
 
 echo ""
 echo "3. Running POSIX Compatibility Script Suite..."
@@ -101,6 +103,21 @@ if [ "$OUT" != "42" ]; then
     exit 1
 fi
 echo "[PASS] Function definition and return status"
+
+# Test reserved words used as arguments (bash treats them as words there)
+OUT=$(./bin/aswell -c 'echo done; echo after')
+if [ "$OUT" != "$(printf 'done\nafter')" ]; then
+    echo "[FAIL] reserved word as argument: $OUT"
+    exit 1
+fi
+echo "[PASS] Reserved word as argument (echo done; echo after)"
+
+OUT=$(./bin/aswell -c 'if echo fi; then echo yes; fi; case x in done) echo A;; *) echo B;; esac')
+if [ "$OUT" != "$(printf 'fi\nyes\nB')" ]; then
+    echo "[FAIL] keywords inside if/case: $OUT"
+    exit 1
+fi
+echo "[PASS] Reserved words inside if/case bodies"
 
 # Test trap execution
 OUT=$(./bin/aswell -c 'trap "echo TRAP_CALLED" EXIT; echo MAIN')
@@ -500,6 +517,181 @@ ASWELL_THEME=minimal HOME="$CFGHOME" ./bin/aswell theme list | strip_ansi | grep
 rm -f /tmp/aswell_cfghome_marker /tmp/aswell_exported_config.txt
 rm -rf "$CFGHOME"
 echo "[PASS] customization hub (config, theme, doctor, reload)"
+
+echo ""
+echo "9. Running Parallel Execution, Retry, Timeout & Curated Alias Tests..."
+
+ALPHOME=$(mktemp -d)
+mkdir -p "$ALPHOME/.config/aswell"
+run_par() { HOME="$ALPHOME" ./bin/aswell -c "$1" | strip_ansi; }
+run_par_env() { HOME="$ALPHOME" ASWELL_CONFIG_DIR="$ALPHOME/.config/aswell" ./bin/aswell -c "$1" | strip_ansi; }
+status_par_env() {
+    HOME="$ALPHOME" ASWELL_CONFIG_DIR="$ALPHOME/.config/aswell" ./bin/aswell -c "$1" > /tmp/aswell_env_out.txt 2>&1
+    local rc=$?
+    strip_ansi < /tmp/aswell_env_out.txt
+    return $rc
+}
+status_par() {
+    HOME="$ALPHOME" ./bin/aswell -c "$1" > /tmp/aswell_par_out.txt 2>&1
+    local rc=$?
+    strip_ansi < /tmp/aswell_par_out.txt
+    return $rc
+}
+fail_par() { echo "[FAIL] $1"; rm -rf "$ALPHOME"; exit 1; }
+
+# --- parallel: each argument is one job; -k keeps the printed order
+OUT=$(run_par "parallel -k -j2 'echo one' 'echo two' 'echo three'")
+[ "$OUT" = "$(printf 'one\ntwo\nthree')" ] || fail_par "parallel -k order mismatch: $OUT"
+
+# --- items: TEMPLATE ::: a b c, and {} substitution is quoted
+OUT=$(run_par "parallel -k -j1 'printf \"[%s]\\n\" {}' ::: 'a b' c")
+[ "$OUT" = "$(printf '[a b]\n[c]')" ] || fail_par "parallel ::: mismatch: $OUT"
+
+# --- no placeholder in the template behaves like xargs (item appended)
+OUT=$(run_par "parallel -k -j1 echo ::: one two")
+[ "$OUT" = "$(printf 'one\ntwo')" ] || fail_par "parallel append mismatch: $OUT"
+
+# --- {.} strips the extension
+OUT=$(run_par "parallel -k -j1 'echo {.}' ::: a.tar.gz b.txt")
+[ "$OUT" = "$(printf 'a.tar\nb')" ] || fail_par "parallel {.} mismatch: $OUT"
+
+# --- stdin supplies the job list when there are no arguments
+OUT=$(printf 'x\ny\n' | HOME="$ALPHOME" ./bin/aswell -c "parallel -k -j1 'echo got {}'" | strip_ansi)
+[ "$OUT" = "$(printf 'got x\ngot y')" ] || fail_par "parallel stdin jobs mismatch: $OUT"
+
+# --- concurrency is real: four 250ms sleeps finish in well under 1s serial time
+START=$(date +%s%N)
+run_par "parallel -j4 'sleep 0.25' 'sleep 0.25' 'sleep 0.25' 'sleep 0.25'" >/dev/null
+END=$(date +%s%N)
+ELAPSED_MS=$(( (END - START) / 1000000 ))
+[ "$ELAPSED_MS" -lt 900 ] || fail_par "parallel did not overlap jobs (${ELAPSED_MS}ms for 4x250ms)"
+
+# --- failure summary and exit status
+OUT=$(status_par "parallel -k -j1 'echo ok' 'false'"; echo "rc=$?")
+echo "$OUT" | grep -q "1 of 2 job(s) failed" || fail_par "parallel failure summary: $OUT"
+echo "$OUT" | grep -q "rc=1" || fail_par "parallel failure exit status: $OUT"
+
+# --- -e halts on the first failure and reports how many never started
+OUT=$(status_par "parallel -e -j1 'false' 'echo kept' 'echo skipped'"; echo "rc=$?")
+echo "$OUT" | grep -q "job(s) not started" || fail_par "parallel -e summary: $OUT"
+echo "$OUT" | grep -q "kept" && fail_par "parallel -e ran a job after the failure: $OUT"
+
+# --- -T kills a job that outlives its deadline
+OUT=$(status_par "parallel -T 0.2 'sleep 5'"; echo "rc=$?")
+echo "$OUT" | grep -q "rc=1" || fail_par "parallel -T exit status: $OUT"
+
+# --- -n reports the job list without running it
+OUT=$(run_par "parallel -n 'echo A' 'echo B'")
+[ "$OUT" = "A" ] && fail_par "parallel -n must not run jobs"
+echo "$OUT" | grep -q "2 job(s)" || fail_par "parallel -n dry run output: $OUT"
+
+# --- ASWELL_PARALLEL_JOBS sets the default concurrency
+OUT=$(HOME="$ALPHOME" ASWELL_PARALLEL_JOBS=1 ./bin/aswell -c "parallel -v -n 'a' 'b' 'c'" 2>&1 | strip_ansi)
+echo "$OUT" | grep -q "1 at a time" || fail_par "ASWELL_PARALLEL_JOBS ignored: $OUT"
+
+# --- retry: keeps trying until the command succeeds (the marker file is the state)
+rm -f /tmp/aswell_retry_marker
+OUT=$(status_par "retry -n 5 -d 0.01 -- sh -c 'test -f /tmp/aswell_retry_marker && exit 0; touch /tmp/aswell_retry_marker; exit 1'; echo rc=\$?")
+echo "$OUT" | grep -q "rc=0" || fail_par "retry did not eventually succeed: $OUT"
+echo "$OUT" | grep -q "attempt 2 succeeded" || fail_par "retry did not report success after retries: $OUT"
+echo "$OUT" | grep -q "attempt 1/5 failed" || fail_par "retry did not report the failed attempt: $OUT"
+rm -f /tmp/aswell_retry_marker
+
+# --- retry: -n 1 means one attempt, and -q means no progress noise
+OUT=$(status_par "retry -n 1 -q -- false; echo rc=\$?")
+[ "$OUT" = "rc=1" ] || fail_par "retry -n 1 -q should be silent and fail: $OUT"
+
+# --- retry: -s/--status accepts a specific exit code as success
+OUT=$(status_par "retry -n 2 -d 0.01 -q -s 0,5 -- sh -c 'exit 5'; echo rc=\$?")
+[ "$OUT" = "rc=0" ] || fail_par "retry -s 0,5 should accept status 5: $OUT"
+
+# --- timeout: reports 124 when the deadline is reached
+OUT=$(status_par "timeout 1 -- sleep 5"; echo "rc=$?")
+echo "$OUT" | grep -q "command exceeded" || fail_par "timeout deadline message: $OUT"
+echo "$OUT" | grep -q "rc=124" || fail_par "timeout exit status: $OUT"
+
+# --- timeout: passes a fast command through, including aliases and builtins
+OUT=$(status_par "timeout 5 -- echo quick"; echo "rc=$?")
+echo "$OUT" | grep -q "^quick$" && echo "$OUT" | grep -q "rc=0" || fail_par "timeout fast path: $OUT"
+OUT=$(run_par "alias tmo_ok='echo alias-ran'; timeout 5 -- tmo_ok")
+[ "$OUT" = "alias-ran" ] || fail_par "timeout with an alias: $OUT"
+OUT=$(status_par "timeout 5 -- 'exit 3'"; echo "rc=$?")
+echo "$OUT" | grep -q "rc=3" || fail_par "timeout must keep the command status: $OUT"
+OUT=$(status_par "timeout -k 1 -s KILL 0.2 -- sleep 5; echo rc=\$?")
+echo "$OUT" | grep -q "rc=137" || fail_par "timeout -k with SIGKILL should report 137: $OUT"
+
+# --- job control still works for `&`, and wait/kill accept %specs
+OUT=$(run_par "sleep 0.2 & wait %1; echo waited")
+echo "$OUT" | grep -q "waited" || fail_par "background job + wait %1: $OUT"
+OUT=$(status_par "sleep 3 & sleep 0.2; kill %1 2>/dev/null; wait %1 2>/dev/null; echo done"; echo "rc=$?")
+echo "$OUT" | grep -q "done" || fail_par "kill %1 on a background job: $OUT"
+
+# --- the curated alias library: list, search, preview
+OUT=$(run_par_env "aswell aliases list")
+echo "$OUT" | grep -q "files" || fail_par "aliases list has no categories: $OUT"
+echo "$OUT" | grep -q "ls -lh" || fail_par "aliases list missing ll: $OUT"
+run_par_env "aswell aliases search human readable" | grep -q "ll" || fail_par "aliases search broken"
+OUT=$(status_par_env "aswell aliases show nosuchthing"; echo "rc=$?")
+echo "$OUT" | grep -q "rc=1" || fail_par "aliases show should fail for unknown names: $OUT"
+
+# --- install persists to ~/.config/aswell/aliases and a new shell sources it
+run_par_env "aswell aliases install files,up" > /dev/null
+grep -q "alias ll='ls -lh'" "$ALPHOME/.config/aswell/aliases" || fail_par "install did not write the alias file"
+grep -q "^up()" "$ALPHOME/.config/aswell/aliases" || fail_par "install did not write the function file"
+OUT=$(run_par_env "type ll; type up")
+echo "$OUT" | grep -q "ll is an alias for ls -lh" || fail_par "installed alias not live in shell: $OUT"
+echo "$OUT" | grep -q "up is a function" || fail_par "installed function not live in shell: $OUT"
+# and inside a `parallel` job, because each job is a real shell
+OUT=$(run_par_env "parallel -j1 'll /tmp > /dev/null && echo job-sees-alias'")
+echo "$OUT" | grep -q "job-sees-alias" || fail_par "alias not usable inside a parallel job: $OUT"
+# functions run for real: up must actually change the directory. Absolute paths
+# only — a test that writes into the repository would pollute every later glob.
+OUT=$(run_par_env "mkdir -p $ALPHOME/a/b/c; cd $ALPHOME/a/b/c; up 2; pwd")
+[ "$OUT" = "$ALPHOME/a" ] || fail_par "up function did not change directory: $OUT"
+
+# --- re-installing is idempotent (no duplicate lines)
+run_par_env "aswell aliases install files" > /dev/null
+[ "$(grep -c "alias ll=" "$ALPHOME/.config/aswell/aliases")" = "1" ] || fail_par "install duplicated an alias"
+
+# --- uninstall removes it from the file and from this shell
+run_par_env "aswell aliases uninstall ll" > /dev/null
+grep -q "alias ll=" "$ALPHOME/.config/aswell/aliases" && fail_par "uninstall left the alias in the file"
+[ "$(status_par_env "type ll > /dev/null 2>&1; echo rc=\$?")" = "rc=1" ] || fail_par "uninstall did not remove the live alias"
+
+# --- curated_aliases installs the same library from config.txt, for every mode
+run_par_env "aswell config set curated_aliases git,files" > /dev/null
+OUT=$(run_par_env "type gs")
+echo "$OUT" | grep -q "gs is an alias for git status -sb" || fail_par "curated_aliases not applied for -c: $OUT"
+printf 'type gs\n' | HOME="$ALPHOME" ./bin/aswell | strip_ansi | grep -q "gs is an alias" || fail_par "curated_aliases not applied for piped stdin"
+run_par_env "aswell doctor" | grep -q "curated_aliases = 'git,files' installs" || fail_par "doctor missing curated_aliases check"
+# unknown selections are a doctor problem, not a silent no-op
+run_par_env "aswell config set curated_aliases nosuchpack" > /dev/null
+run_par_env "aswell doctor --quiet" | grep -q "unknown selection" || fail_par "doctor misses unknown curated_aliases"
+run_par_env "aswell config set curated_aliases ''" > /dev/null
+
+# --- `local` is scoped to the function and supports suffix stripping
+# (a script file, because nested quoting through -c would test the harness, not the shell)
+cat > /tmp/aswell_local_scope.sh <<'ASWELL_EOF'
+f() { local v=/tmp/a/b/c; echo "${v%/*} ${v##*/} ${#v}" }
+f
+echo "leaked:[${v-unset}]"
+ASWELL_EOF
+OUT=$(./bin/aswell /tmp/aswell_local_scope.sh | strip_ansi)
+[ "$OUT" = "$(printf '/tmp/a/b c 10\nleaked:[unset]')" ] || fail_par "local variable semantics: $OUT"
+
+# --- prefix assignments are temporary (visible to the command, never left behind)
+cat > /tmp/aswell_prefix_assign.sh <<'ASWELL_EOF'
+A=2
+g() { echo "inside:$A" }
+A=42 g
+echo "after:$A"
+ASWELL_EOF
+OUT=$(./bin/aswell /tmp/aswell_prefix_assign.sh | strip_ansi)
+[ "$OUT" = "$(printf 'inside:42\nafter:2')" ] || fail_par "prefix assignment isolation: $OUT"
+rm -f /tmp/aswell_local_scope.sh /tmp/aswell_prefix_assign.sh
+
+rm -rf "$ALPHOME"
+echo "[PASS] parallel execution, retry, timeout, job specs and the curated alias library"
 
 echo ""
 echo "=================================================="
