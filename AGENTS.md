@@ -30,6 +30,7 @@ aswell/
 │   │   ├── expansion.hpp    # 7-stage POSIX word expansion pipeline
 │   │   ├── executor.hpp     # Execution engine (fork/exec, pipes, redirections)
 │   │   ├── builtins.hpp     # POSIX and Aswell builtins
+│   │   ├── parallel.hpp     # Pure helpers of the `parallel` builtin (testable)
 │   │   ├── environment.hpp  # Variables, PATH, functions, aliases, traps
 │   │   ├── signals.hpp      # Signal handlers & terminal state
 │   │   └── jobs.hpp         # Job control (fg, bg, jobs, wait)
@@ -51,7 +52,8 @@ aswell/
 │   ├── config/              # Configuration & Themes
 │   │   ├── config.hpp       # config.txt parser, ShellConfig, ConfigWatcher, reports
 │   │   ├── settings.hpp     # Declarative settings registry (single source of truth)
-│   │   ├── settings_cli.hpp # `aswell config|theme|doctor|reload` customization hub
+│   │   ├── settings_cli.hpp # `aswell config|theme|doctor|aliases|reload` customization hub
+│   │   ├── alias_library.hpp# Curated alias/function table (58 entries, 9 categories)
 │   │   ├── config_editor.hpp# Interactive TUI configuration editor (generated from the registry)
 │   │   └── theme.hpp        # Theme presets, user themes, resolution order
 │   └── plugin/              # Extensibility subsystem
@@ -59,11 +61,13 @@ aswell/
 │       └── hooks.hpp        # Lifecycle hooks (on_start, pre_cmd, post_cmd, etc.)
 ├── src/                     # C++ implementation files matching include/
 │   ├── shell/
+│   │   └── builtins_parallel.cpp # `parallel`, `retry`, `timeout` (fork, poll, signals)
 │   ├── ui/
 │   ├── editor/
 │   ├── config/
 │   │   ├── settings.cpp     # The registry table: one row per user-facing knob
-│   │   ├── settings_cli.cpp # Settings hub: config/theme/doctor/reload commands
+│   │   ├── settings_cli.cpp # Settings hub: config/theme/aliases/doctor/reload commands
+│   │   ├── alias_library.cpp# The curated alias table + install/uninstall/file handling
 │   │   └── ...
 │   ├── plugin/
 │   └── main.cpp             # Main shell entry point, interactive REPL & apply_config()
@@ -133,6 +137,11 @@ The test suite validates:
    preserving writes, `ConfigWatcher` hot-reload detection, theme resolution and
    scaffolding, hub Tab completion, JSON output; end-to-end `aswell config`,
    `aswell theme`, `aswell doctor` and `aswell reload` behaviour in a scratch `$HOME`.
+6. **Parallelism & Alias Library** (`tests/test_features.cpp` + suite section 9):
+   template substitution, stdin/`:::` job lists, keep-order, `-e`/`-T`/dry-run,
+   `retry` backoff and `-s` accepted statuses, `timeout` exit codes (124/137),
+   job specs, curated-alias table invariants, install/uninstall round-trips against
+   a temp `$ASWELL_CONFIG_DIR`, and that installed aliases work inside `parallel` jobs.
 
 ---
 
@@ -206,7 +215,8 @@ Aswell provides dedicated primitives and environment variables for rich terminal
    - Pathname expansion / Globbing (`*`, `?`, `[...]`)
    - Quote removal
 4. **Executor (`executor.cpp`)**: Manages process creation, redirects (`<`, `>`, `>>`, `<&`, `>&`), pipelines with Unix `pipe()` and `fork()`, and job table tracking.
-5. **Builtins (`builtins.cpp`)**: Standard builtins (`cd`, `pwd`, `echo`, `printf`, `test`/`[`, `export`, `readonly`, `set`, `unset`, `eval`, `exec`, `read`, `source`, `type`, `kill`, `umask`, `alias`, `unalias`, `exit`, `jobs`, `fg`, `bg`, `wait`, `trap`) plus Aswell control (`aswell config`, `aswell custom`, `aswell theme`, `aswell ui`, `aswell hooks`).
+5. **Builtins (`builtins*.cpp`)**: Standard builtins (`cd`, `pwd`, `echo`, `printf`, `test`/`[`, `export`, `readonly`, `set`, `unset`, `eval`, `exec`, `read`, `source`, `type`, `kill`, `umask`, `alias`, `unalias`, `local`, `exit`, `jobs`, `fg`, `bg`, `wait`, `trap`) plus Aswell-only ones (`parallel`, `retry`, `timeout`) and shell control (`aswell config`, `aswell aliases`, `aswell custom`, `aswell theme`, `aswell ui`, `aswell hooks`). Job specs (`%1`, `%+`, `%-`, `%%`, `%?cmd`) resolve through `JobManager::resolve`, shared by `jobs`/`fg`/`bg`/`wait`/`kill`.
+6. **Parser (`parser.cpp`)**: reserved words are reserved only at the *start* of a command; `collect_simple_command_words()` accepts `done`/`fi`/`then`/… as arguments (as bash does) while keeping `esac` reserved so malformed `case` blocks still error.
 
 ### HTML/CSS Prompt Engine (`src/ui/`)
 - **DOM Engine (`dom.cpp`)**: Parses lightweight HTML templates (e.g. `~/.config/aswell/prompt.html`).
@@ -234,10 +244,19 @@ Aswell provides dedicated primitives and environment variables for rich terminal
 
 ### Adding a New Builtin Command
 1. Declare the method in `include/aswell/shell/builtins.hpp`.
-2. Implement the logic in `src/shell/builtins.cpp`.
-3. Register the builtin name in `Builtins::is_builtin()` and `Builtins::dispatch()`.
-4. Register the builtin in `include/aswell/editor/completion.hpp` and `Builtins::all_builtins()` for tab completion.
-5. Add a unit test in `tests/`.
+2. Implement the logic in the matching `src/shell/builtins_*.cpp` (large features get
+   their own file, e.g. `builtins_parallel.cpp` for `parallel`/`retry`/`timeout`).
+3. Register the builtin name in `Builtins::is_builtin()` **and** `Builtins::dispatch()` —
+   both lists must agree or the command is half-known.
+4. Add it to the builtin table in `src/editor/completion.cpp` (menu + badges) and to
+   the name list in `Executor::find_similar_commands` (`src/shell/executor.cpp`) so
+   `type` and "did you mean" know it.
+5. Document it in `docs/CONFIGURATION.md` and in `aswell help`
+   (`src/shell/builtins_io.cpp`) — help text is generated from the same facts.
+6. Add a unit test in `tests/` plus an end-to-end check in `tests/run_all_tests.sh`.
+7. Anything that forks must give the child its own process group (`setpgid`) and must
+   restore signals; anything that pumps output must use `O_NONBLOCK` on the read end,
+   otherwise "parallel" output silently serialises (see `builtins_parallel.cpp`).
 
 ### Adding a New Prompt DOM Element
 1. Add the element tag name check in `src/ui/prompt.cpp` within `PromptEngine::resolve_element()`.
@@ -266,6 +285,26 @@ Never hard-code a list of themes, settings or CSS properties elsewhere; ask
 `ThemeManager::theme_names()`, `SettingsRegistry::all()` or
 `CSSParser::supported_properties()`. `aswell doctor` validates user files
 against the same lists, which is what keeps docs, code and UX from drifting.
+
+### Adding a Curated Alias or Helper Function
+The alias library is declarative in exactly the same way settings are: one row in
+`src/config/alias_library.cpp` feeds `aswell aliases list|show|search|preview|install`,
+the `curated_aliases` setting applied at startup, `~/.config/aswell/aliases`, and
+`aswell doctor`.
+
+1. Add a row: `{name, AliasKind::ALIAS|FUNCTION, category, definition, description,
+   needs, shadows}`. Reuse an existing category unless a new group genuinely helps.
+2. `needs` names a binary the entry requires (`"docker"`, `"fd"`): rows whose tool is
+   missing are skipped with a reason instead of installing something broken.
+3. `shadows` marks entries that replace a real command (only the `safe` category may
+   do that) so the installer warns rather than overriding silently.
+4. Keep definitions single-line for aliases; function rows are full shell source and
+   are installed by *executing* them (`executor->execute_string`), which defines the
+   function without running it. They may use `local`, `${VAR%pattern}` and word
+   splitting, but must stay parseable by this shell — `tests/test_features.cpp`
+   asserts every rendered row parses and defines its name.
+5. `tests/test_features.cpp` also enforces unique names, non-empty description and
+   definition, and a known category, so a new row is validated without writing a test.
 
 ### Adding a New Animation Type
 1. Define the animation enum in `include/aswell/ui/animation.hpp`.

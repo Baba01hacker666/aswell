@@ -56,6 +56,17 @@ aswell theme preview --all
 aswell theme set cyberpunk
 aswell theme new mytheme --from dracula   # themes/mytheme.css; hot-reloaded as you edit it
 
+# Curated aliases: preview, install, or opt in permanently
+aswell aliases list                       # what the library offers, by category
+aswell aliases install files,nav,git      # define them now and save them
+aswell config set curated_aliases all      # …or install the whole library at every start
+
+# Run things concurrently, with retries and deadlines
+parallel -j8 'cargo build' 'cargo test' 'make docs'
+parallel -k 'convert -resize 50% {} {.}.webp' ::: *.jpg
+retry -n 5 -d 2 -- curl -f https://example.com
+timeout 30 -- make -j8
+
 # Diagnose a setup (great in CI for dotfiles)
 aswell doctor
 
@@ -74,7 +85,9 @@ color rainbow "Vibrant rainbow text"
 
 - 🐚 **Rock-Solid POSIX Execution**: Complete IEEE Std 1003.1-2017 standard execution. Runs everyday shell scripts, automation pipelines, loops, functions, redirections, brace expansion, and job control.
 - 🎨 **HTML & CSS Terminal Styling**: Style your prompt with semantic HTML tags (`<user>`, `<directory>`, `<git>`, `<status>`, `<time>`, `<date>`, `<rprompt>`) and standard CSS (`color`, `background`, `border`, `padding`, `animation`).
-- 🧩 **One Settings Hub, Zero Guessing**: 22 documented settings behind `aswell config list/get/set/toggle/help`, with aliases, validation, "did you mean" recovery, JSON output for scripting, and an interactive TUI that previews your real prompt live.
+- 🚀 **Parallelism, Retries and Deadlines as Builtins**: `parallel` runs jobs through the *shell* (aliases, functions, pipelines all work), `retry` hammers flaky commands until they pass, `timeout` gives any command a deadline — plus real job control (`&`, `jobs -l`, `wait %1`, `kill %?sleep`, `fg`).
+- 🎁 **58 Curated Aliases You Can Opt Into**: `aswell aliases list|show|install` and a `curated_aliases` setting; what you install lands in `~/.config/aswell/aliases` as plain shell source you can read and edit.
+- 🧩 **One Settings Hub, Zero Guessing**: 25 documented settings behind `aswell config list/get/set/toggle/help`, with aliases, validation, "did you mean" recovery, JSON output for scripting, and an interactive TUI that previews your real prompt live.
 - 🔥 **Hot Reload Customization**: edit `theme.css`, `prompt.html` or `config.txt` and watch the next prompt change. `aswell doctor` validates all of it; broken CSS can never blank your prompt.
 - 🌈 **24-bit TrueColor Everywhere**: Builtin `color` command, hex colors (`#ff79c6`), gradients, rainbows, and automatic color flags for everyday CLI tools.
 - ⌨️ **Aswell Line Editor (ALE)**: Real-time syntax highlighting, history autosuggestions, fuzzy tab completion, reverse search (`Ctrl+R`), and both Emacs & Vi modes.
@@ -93,6 +106,8 @@ color rainbow "Vibrant rainbow text"
 | Write your own theme | `aswell theme new mytheme --from nord`, then edit `~/.config/aswell/themes/mytheme.css` |
 | Script it / store in dotfiles | `aswell config list --json` · `aswell config export --to aswell.cfg` · `aswell config import aswell.cfg` |
 | Use a second config dir | `aswell --config ./aswell-config` or `ASWELL_CONFIG_DIR=…` |
+| Enable the curated aliases | `aswell aliases install files,nav,git` · `aswell config set curated_aliases all` |
+| Run work concurrently | `parallel -j8 CMD…` · `parallel -k 'cmd {}' ::: items` · `retry` · `timeout` |
 | Check nothing is broken | `aswell doctor` (exit 1 on real problems, `--quiet` for CI) |
 
 Every key above is also a line in `~/.config/aswell/config.txt`, and every one of

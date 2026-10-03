@@ -9,7 +9,8 @@ Aswell stores user configurations in `~/.config/aswell/`:
 ```
 ~/.config/aswell/
 ├── config.txt         # All shell settings (documented by `aswell config help`)
-├── aswellrc           # Shell startup commands, aliases, functions
+├── aliases            # Curated aliases/functions written by `aswell aliases install`
+├── aswellrc           # Shell startup commands, aliases, functions (sourced last)
 ├── prompt.html        # Optional: declarative prompt layout
 ├── theme.css          # Optional: legacy single-file stylesheet override
 ├── themes/            # Custom themes (<name>.css)
@@ -17,6 +18,9 @@ Aswell stores user configurations in `~/.config/aswell/`:
 ├── plugins/           # Custom plugins (.sh files)
 └── commands/          # Custom commands, put on $PATH automatically
 ```
+
+Load order at startup: `~/.bashrc` import (if `import_bashrc`) → `aliases` →
+`aswellrc`, so anything you write yourself overrides what Aswell installed.
 
 `aswell config path` prints the active directory; set `ASWELL_CONFIG_DIR`
 (or `aswell --config PATH`) to use a different one for tests or a second setup.
@@ -145,6 +149,8 @@ the documentation cannot drift.
 | `history_ignore_dups` | bool | `false` | Drop repeated commands anywhere in history, not only consecutively |
 | `auto_reload` | bool | `true` | Re-read theme, prompt template and config.txt when they change |
 | `import_bashrc` | bool | `true` | Import `~/.bashrc` aliases, exports and functions on startup |
+| `curated_aliases` | text | _empty_ | Install these alias-library selections at every start (`all`, `git,files`, …) |
+| `parallel_jobs` | int | `0` | Default concurrent jobs for `parallel` (0 = one per CPU, capped at 64) |
 
 ### Environment Variables
 
@@ -153,7 +159,102 @@ the documentation cannot drift.
 | `ASWELL_CONFIG_DIR` | Use another configuration directory (what `aswell --config PATH` sets) |
 | `ASWELL_THEME` | Use a theme for this session only, without touching `config.txt` |
 | `ASWELL_NO_BASHRC=1` | Skip the `~/.bashrc` import for this session |
+| `ASWELL_PARALLEL_JOBS` | Default `parallel` concurrency for this session (overridden by `parallel_jobs` and `-j`) |
 | `ASWELL_USER`, `ASWELL_HOSTNAME` | Prompt identity (set for you by `aswell config set username …`) |
+
+## Concurrency: `parallel`, `retry` and `timeout`
+
+These are builtins, not wrappers around GNU parallel: every job runs through the
+shell, so a job may use pipelines, redirections, `$vars`, aliases, functions and
+globbing exactly as you would type them.
+
+```bash
+# Each argument is one job; -j sets how many run at once (default: one per CPU)
+parallel -j4 'cargo build' 'cargo test' 'make docs'
+
+# One job per item — {} is replaced, and quoted so spaces cannot break the word
+parallel -k 'convert -resize 50% {} {.}.webp' ::: *.jpg
+
+# The classic pipe: stdin supplies the job list, the arguments become the template
+find . -name '*.log' | parallel -j8 'gzip -9 {}'
+
+# Useful flags
+#   -k / --keep-order     print output in submission order, not completion order
+#   -T 30                 kill any job that runs longer than 30 seconds
+#   -e / --halt-on-error  stop launching jobs after the first failure
+#   -t / --tag            prefix each output line with its job
+#   -n / --dry-run        print the job list without running it
+#   -v / --verbose        per-job status on stderr
+#   -0 / --null           split stdin on NUL bytes (pairs with `find -print0`)
+#   -a / --arguments-file FILE
+parallel -t -T 60 -e -j 12 :::: hosts.txt -- 'ssh {} uptime'
+```
+
+Concurrency precedence is `-j` > `parallel_jobs` in `config.txt` >
+`ASWELL_PARALLEL_JOBS` > one job per CPU (capped at 64 so a 128-core machine does
+not fork 128 shells per line of input).
+
+`parallel` collects each job's stdout and stderr together, reaps finished jobs as
+they land, and exits 1 if anything failed (`aswell: parallel: 2 of 9 job(s) failed`).
+While it runs, Ctrl-C is forwarded to every live job group instead of only the
+foreground one, so nothing is left behind.
+
+```bash
+# retry: run a command until it works (network flakiness, locked package databases)
+retry -n 5 -d 2 -- curl -f https://example.com
+#   -n N        attempts (0 = forever)        -d SECS  first delay
+#   -x SECS     maximum delay after backoff     -f       fixed delay (no backoff)
+#   -u STATUS   stop when the command exits with STATUS  -q  no progress output
+
+# timeout: a deadline for anything, including shell code and aliases
+timeout 30 -- make -j8
+timeout -k 2 -s INT 10s -- ping example.com
+timeout 5 -- 'git fetch --all && git status'
+```
+
+Background jobs got the same treatment: `cmd &` puts the job in its own process
+group, `jobs -l`/`-p` list it bash-style, `wait %1`, `kill %?sleep`, `fg %+`,
+`wait -n` and `kill %1` all resolve the usual job specs, and the shell prints
+`[1]+ Done  long_command` when a background job finishes.
+
+## The Curated Alias Library (`aswell aliases`)
+
+`aswell` ships 58 documented shortcuts (`ll`, `gs`, `up`, `mkcd`, `serve`,
+`dlogs` …) in 9 categories: `files`, `nav`, `git`, `sys`, `net`,
+`dev`, `aswell`, `safe`, `docker`. Nothing is enabled by default — you opt in, and
+what you opt into is plain shell source you can read and edit.
+
+```bash
+aswell aliases list                  # what exists, with ✓ live / • saved markers
+aswell aliases search disk           # find entries by name, description or body
+aswell aliases show lt               # one entry, with its source and rationale
+aswell aliases preview git,nav       # print the shell code without touching anything
+aswell aliases install files,nav,git # define them now AND save them
+aswell aliases uninstall ll          # remove from this shell and from the file
+aswell aliases path                  # where the file lives
+```
+
+`install` writes `~/.config/aswell/aliases`, which is sourced on every start (after
+the `~/.bashrc` import, before `~/.aswellrc`, so your own definitions always win).
+Re-running `install` is idempotent — it replaces its own lines and never duplicates
+them, and it will not overwrite an alias you defined yourself (pass `--force` if you
+want that). Entries whose tool is missing on the machine (`docker`, `rg`, `fd` …) are
+skipped with a reason instead of installing something broken. The `safe` category is the exception
+that shadows real commands (`rm`, `mv`, `cp`, `ln`, `truncate`) with an `-i` flag;
+`install` warns when it does, and `aswell aliases uninstall rm` puts the real
+command back.
+
+Two durable ways to get them every session:
+
+```bash
+aswell config set curated_aliases git,files   # installed by the shell at startup
+# …or keep them in ~/.config/aswell/aliases (what `aswell aliases install` writes),
+# …or paste what you want into ~/.aswellrc:
+aswell aliases preview all >> ~/.config/aswell/aswellrc
+```
+
+`aswell config set curated_aliases all` is the one-liner for "give me everything";
+`aswell doctor` reports unknown selections and how many entries the setting installs.
 
 ## Live Reload (no restarts while customizing)
 
