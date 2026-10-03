@@ -15,6 +15,7 @@
 #include "aswell/ui/demo.hpp"
 #include "aswell/ui/template_engine.hpp"
 #include <fstream>
+#include <iomanip>
 #include <dirent.h>
 #include <sys/stat.h>
 
@@ -23,23 +24,31 @@ using namespace aswell;
 static void print_help() {
     std::cout << "Usage: aswell [OPTIONS] [SCRIPT [ARGS...]]\n"
               << "       aswell -c COMMAND [ARGS...]\n"
-              << "       aswell config\n"
-              << "       aswell theme [list | set NAME]\n"
-              << "       aswell color [OPTIONS] <COLOR> [TEXT...]\n\n"
+              << "       aswell config [COMMAND]        settings hub\n"
+              << "       aswell theme [COMMAND]         prompt themes\n"
+              << "       aswell doctor                  validate config, theme & prompt\n\n"
               << "A modern, beautiful, powerful Unix shell with POSIX compatibility.\n\n"
               << "Options:\n"
               << "  -c COMMAND     Execute command string\n"
-              << "  --config PATH  Specify custom configuration directory\n"
+              << "  --config PATH  Use PATH as the configuration directory (sets $ASWELL_CONFIG_DIR)\n"
               << "  --no-theme     Disable theme engine and run plain POSIX output\n"
               << "  --safe-mode    Disable external plugins and third-party scripts\n"
               << "  --no-bashrc    Skip importing ~/.bashrc aliases and environment\n"
               << "  --version, -v  Print version information\n"
               << "  --help, -h     Print this help message\n\n"
               << "Subcommands:\n"
-              << "  config         Open interactive configuration TUI\n"
-              << "  theme          List or switch themes\n"
+              << "  config         Settings hub: list, get, set, toggle, unset, help, export, import,\n"
+              << "                 show, path, edit (interactive TUI). Try `aswell config help`.\n"
+              << "  theme          list | set <name> | preview [name|--all] [--animate] | show |\n"
+              << "                 new <name> [--from preset] | reset\n"
               << "  color          Print colored text or inspect palettes\n"
-              << "  demo           Run engine animation & UI showcase (--auto for headless)\n";
+              << "  doctor         Check config.txt, theme, prompt.html, plugins and terminal setup\n"
+              << "  reload         Re-read settings, theme and prompt template\n"
+              << "  demo           Run engine animation & UI showcase (--auto for headless)\n\n"
+              << "Environment:\n"
+              << "  ASWELL_CONFIG_DIR  configuration directory (default ~/.config/aswell)\n"
+              << "  ASWELL_THEME       overrides the configured theme for one session\n"
+              << "  ASWELL_NO_BASHRC=1 skip ~/.bashrc import for this session\n";
 }
 
 int main(int argc, char* argv[]) {
@@ -59,11 +68,8 @@ int main(int argc, char* argv[]) {
     std::string command_string;
     std::string script_path;
     std::vector<std::string> script_args;
-    bool explicit_config = false;
     std::string custom_config_path;
     bool no_bashrc_flag = false;
-    (void)explicit_config;
-    (void)custom_config_path;
 
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
@@ -98,62 +104,23 @@ int main(int argc, char* argv[]) {
         } else if (arg == "--no-bashrc") {
             no_bashrc_flag = true;
         } else if (arg == "--config" && i + 1 < argc) {
-            explicit_config = true;
             custom_config_path = argv[++i];
-        } else if (arg == "config") {
-            if (i + 1 < argc) {
-                std::vector<std::string> cfg_args;
-                cfg_args.push_back("aswell");
-                cfg_args.push_back("config");
-                for (int j = i + 1; j < argc; ++j) {
-                    cfg_args.push_back(argv[j]);
-                }
-                Executor early_exec(env, jobs);
-                ControlFlow flow;
-                return Builtins::execute("aswell", cfg_args, env, jobs, early_exec, flow);
+            // Honour the custom directory everywhere, including child processes
+            // and the config/theme builtins, via the canonical env override.
+            ::setenv("ASWELL_CONFIG_DIR", custom_config_path.c_str(), 1);
+        } else if (arg == "config" || arg == "settings" || arg == "theme" || arg == "themes" ||
+                   arg == "doctor" || arg == "check" || arg == "reload") {
+            // The customization hub implements these identically for the CLI and
+            // for the in-shell builtin, so behaviour can never diverge.
+            std::vector<std::string> hub_args;
+            hub_args.push_back("aswell");
+            hub_args.push_back((arg == "settings") ? "config" : (arg == "themes" ? "theme" : arg));
+            for (int j = i + 1; j < argc; ++j) {
+                hub_args.push_back(argv[j]);
             }
-            // Interactive Configuration Editor TUI
-            return ConfigEditor::run_interactive(env);
-        } else if (arg == "theme") {
-            if (i + 1 >= argc || std::string(argv[i + 1]) == "list") {
-                std::cout << "\033[1;34mAvailable Themes:\033[0m\n";
-                for (const auto& name : ThemeManager::get_builtin_theme_names()) {
-                    auto info = ThemeManager::get_theme(name);
-                    std::cout << "  * \033[1;36m" << std::left << std::setw(12) << name << "\033[0m - " << info.description << "\n";
-                }
-
-                std::string themes_dir = ConfigManager::get_config_dir() + "/themes";
-                DIR* d = opendir(themes_dir.c_str());
-                if (d) {
-                    struct dirent* entry;
-                    bool header_printed = false;
-                    while ((entry = readdir(d)) != nullptr) {
-                        std::string fname = entry->d_name;
-                        if (str_util::ends_with(fname, ".css")) {
-                            if (!header_printed) {
-                                std::cout << "\n\033[1;35mCustom User Themes (~/.config/aswell/themes/):\033[0m\n";
-                                header_printed = true;
-                            }
-                            std::string th_name = fname.substr(0, fname.size() - 4);
-                            std::cout << "  * \033[1;32m" << std::left << std::setw(12) << th_name << "\033[0m - Custom user stylesheet\n";
-                        }
-                    }
-                    closedir(d);
-                }
-                return 0;
-            } else if (std::string(argv[i + 1]) == "set" && i + 2 < argc) {
-                ShellConfig cfg = ConfigManager::load();
-                cfg.theme_name = argv[i + 2];
-                ConfigManager::save(cfg);
-                std::cout << "Theme switched to \033[1;32m" << cfg.theme_name << "\033[0m\n";
-                return 0;
-            } else if (i + 1 < argc && argv[i + 1][0] != '-') {
-                ShellConfig cfg = ConfigManager::load();
-                cfg.theme_name = argv[i + 1];
-                ConfigManager::save(cfg);
-                std::cout << "Theme switched to \033[1;32m" << cfg.theme_name << "\033[0m\n";
-                return 0;
-            }
+            Executor early_exec(env, jobs);
+            ControlFlow flow;
+            return Builtins::execute("aswell", hub_args, env, jobs, early_exec, flow);
         } else if (arg == "color") {
             std::vector<std::string> color_args;
             color_args.push_back("color");
@@ -265,7 +232,9 @@ int main(int argc, char* argv[]) {
     jobs.set_interactive(true);
     SignalManager::init_signals(true);
 
-    // Load configuration
+    // Startup configuration (colours + bash compatibility import). The full
+    // settings application (prompt, theme, editor) happens in apply_config()
+    // below so the exact same code path runs on hot reload.
     ShellConfig cfg = ConfigManager::load();
     env.opt_vi_mode = cfg.vi_mode;
     if (cfg.enable_colored_output && !env.opt_no_theme) {
@@ -307,47 +276,117 @@ int main(int argc, char* argv[]) {
     std::string user_plugin_dir = ConfigManager::get_config_dir() + "/plugins";
     plugins.load_plugins_from_directory(user_plugin_dir, env.opt_safe_mode);
 
-    // Setup prompt engine
+    // ---------------------------------------------------------------------
+    // Live configuration: one function applies everything the user can tweak
+    // (settings, theme stylesheet, prompt template, editor behaviour). It runs
+    // at startup and again whenever config.txt/theme.css/prompt.html change on
+    // disk (`auto_reload`) or the user asks for it (`aswell reload`, and every
+    // `aswell config set` / `aswell theme set`).
+    // ---------------------------------------------------------------------
     PromptEngine prompt_engine(env);
-    if (!cfg.custom_username.empty()) {
-        prompt_engine.set_custom_user(cfg.custom_username);
-        env.set_var("ASWELL_USER", cfg.custom_username, true);
-    }
-    if (!cfg.custom_hostname.empty()) {
-        prompt_engine.set_custom_hostname(cfg.custom_hostname);
-        env.set_var("ASWELL_HOSTNAME", cfg.custom_hostname, true);
-    }
-    if (!env.opt_no_theme) {
-        // 1. Custom CSS theme check (~/.config/aswell/theme.css or ~/.config/aswell/themes/<name>.css)
-        std::string custom_css_path = ConfigManager::get_config_dir() + "/theme.css";
-        std::ifstream css_f(custom_css_path);
-        if (css_f) {
-            std::stringstream ss;
-            ss << css_f.rdbuf();
-            prompt_engine.set_theme_css(ss.str());
-        } else {
-            ThemeInfo tinfo = ThemeManager::get_custom_theme(ConfigManager::get_config_dir() + "/themes", cfg.theme_name);
-            prompt_engine.set_theme_css(tinfo.css_content);
-        }
-
-        // 2. Custom prompt HTML template check (~/.config/aswell/prompt.html)
-        std::string custom_html_path = ConfigManager::get_config_dir() + "/prompt.html";
-        std::ifstream html_f(custom_html_path);
-        if (html_f) {
-            std::stringstream ss;
-            ss << html_f.rdbuf();
-            prompt_engine.set_template_html(ss.str());
-        } else {
-            prompt_engine.set_template_html(ConfigManager::build_template(cfg));
-        }
-    } else {
-        // Plain prompt
-        prompt_engine.set_template_html("<prompt><text>aswell $ </text></prompt>");
-        prompt_engine.set_theme_css("prompt { color: none; }");
-    }
-
     LineEditor editor(env, prompt_engine);
-    editor.set_command_animation(cfg.enable_command_animation);
+    ConfigWatcher watcher;
+    bool auto_reload_enabled = true;
+    bool command_banner_enabled = false;
+    bool first_apply = true;
+
+    auto apply_config = [&](bool announce) {
+        ConfigReport report;
+        ShellConfig next_cfg = ConfigManager::load(&report);
+
+        // An explicit ASWELL_THEME always wins for this session, which makes
+        // `ASWELL_THEME=nord aswell` and `aswell theme set nord` behave alike.
+        std::string theme_override = env.get_var("ASWELL_THEME");
+        if (!theme_override.empty()) {
+            next_cfg.theme_name = str_util::to_lower(str_util::trim(theme_override));
+        }
+
+        auto_reload_enabled = next_cfg.auto_reload;
+        command_banner_enabled = next_cfg.enable_command_banner;
+        env.opt_vi_mode = next_cfg.vi_mode;
+
+        prompt_engine.set_animations_enabled(next_cfg.enable_animation);
+        prompt_engine.set_time_format(next_cfg.time_format);
+        prompt_engine.set_date_format(next_cfg.date_format);
+        prompt_engine.set_custom_user(next_cfg.custom_username);
+        prompt_engine.set_custom_hostname(next_cfg.custom_hostname);
+
+        editor.set_autosuggestions(next_cfg.enable_autosuggestions);
+        editor.set_syntax_highlighting(next_cfg.enable_syntax_highlighting);
+        editor.set_command_animation(next_cfg.enable_command_animation);
+        if (next_cfg.history_size > 0) {
+            editor.history().set_max_entries(static_cast<size_t>(next_cfg.history_size));
+        }
+        editor.history().set_ignore_dups(next_cfg.history_ignore_dups);
+
+        if (env.opt_no_theme) {
+            prompt_engine.set_template_html("<prompt><text>aswell $ </text></prompt>");
+            prompt_engine.set_theme_css("prompt { color: none; }");
+        } else {
+            std::string config_dir = ConfigManager::get_config_dir();
+            std::string theme_warning;
+            ThemeInfo theme = ThemeManager::resolve(config_dir, next_cfg.theme_name, &theme_warning);
+
+            // A stylesheet that yields no rules at all (half-typed CSS saved by
+            // accident) must never blank out a working prompt: keep the last
+            // good one and tell the user what happened.
+            StyleSheet incoming = CSSParser::parse(theme.css_content);
+            if (incoming.rules().empty() && !prompt_engine.stylesheet().rules().empty()) {
+                std::cerr << "aswell: keeping previous theme — " << theme.source
+                          << " produced no style rules\n";
+            } else {
+                prompt_engine.set_theme_css(theme.css_content);
+            }
+            if (!theme_warning.empty()) {
+                std::cerr << "aswell: " << theme_warning << "\n";
+            }
+
+            std::ifstream html_f(config_dir + "/prompt.html");
+            if (html_f) {
+                std::stringstream hs;
+                hs << html_f.rdbuf();
+                prompt_engine.set_template_html(hs.str());
+            } else {
+                prompt_engine.set_template_html(ConfigManager::build_template(next_cfg));
+            }
+        }
+
+        // Watch the customization files for the next iteration of the loop.
+        watcher.clear();
+        std::string config_dir = ConfigManager::get_config_dir();
+        watcher.watch(config_dir + "/config.txt");
+        watcher.watch(config_dir + "/theme.css");
+        watcher.watch(config_dir + "/prompt.html");
+        watcher.watch(config_dir + "/themes/" + next_cfg.theme_name + ".css");
+        watcher.snapshot();
+
+        // Typos in config.txt used to vanish silently. Report them, but stay
+        // quiet afterwards unless the user asked for a reload.
+        if (!report.issues.empty() && (first_apply || announce)) {
+            for (size_t i = 0; i < report.issues.size() && i < 4; ++i) {
+                const ConfigReport::Issue& issue = report.issues[i];
+                std::cerr << "aswell: " << config_dir << "/config.txt:" << issue.line << ": "
+                          << issue.key << " " << issue.message;
+                if (!issue.suggestion.empty()) std::cerr << " (" << issue.suggestion << ")";
+                std::cerr << "\n";
+            }
+            if (report.issues.size() > 4) {
+                std::cerr << "aswell: " << (report.issues.size() - 4)
+                          << " more config issue(s) — run `aswell doctor`\n";
+            }
+        }
+
+        if (announce) {
+            std::cout << "\033[90maswell: reloaded settings, theme '\033[0m\033[1m" << next_cfg.theme_name
+                      << "\033[0m\033[90m' and prompt template\033[0m\n";
+        }
+    };
+
+    // `aswell config set ...`, `aswell theme set ...` and `aswell reload` call
+    // this to apply their changes to the running prompt immediately.
+    env.config_reload = [&apply_config](bool announce) { apply_config(announce); };
+    apply_config(false);
+    first_apply = false;
 
     hooks.trigger_hook(HookType::ON_START);
 
@@ -359,6 +398,23 @@ int main(int argc, char* argv[]) {
         if (cur_pwd != last_pwd) {
             hooks.trigger_hook(HookType::ON_DIR_CHANGE, {cur_pwd});
             last_pwd = cur_pwd;
+        }
+
+        // Live customization: if config.txt, the active theme stylesheet or
+        // prompt.html changed on disk, re-apply them before drawing the prompt.
+        if (auto_reload_enabled && watcher.changed()) {
+            std::vector<std::string> changed = watcher.changed_files();
+            apply_config(false);
+            if (!changed.empty()) {
+                std::string names;
+                for (size_t i = 0; i < changed.size(); ++i) {
+                    const std::string& file = changed[i];
+                    size_t slash = file.find_last_of('/');
+                    if (i) names += ", ";
+                    names += file.substr(slash == std::string::npos ? 0 : slash + 1);
+                }
+                std::cout << "\033[90maswell: reloaded " << names << "\033[0m\n";
+            }
         }
 
         hooks.trigger_hook(HookType::ON_PROMPT);
@@ -401,6 +457,19 @@ int main(int argc, char* argv[]) {
 
         if (status != 0) {
             hooks.trigger_hook(HookType::ON_ERROR, {line, std::to_string(status)});
+        }
+
+        // Optional execution ribbon (off by default; config.txt `command_banner=true`).
+        if (command_banner_enabled) {
+            double ms = executor.get_last_command_duration_ms();
+            std::string label = line;
+            if (label.size() > 52) label = label.substr(0, 49) + "...";
+            std::string head = (status == 0)
+                ? std::string("\033[1;32m\xe2\x9c\x93\033[0m")
+                : ("\033[1;31m\xe2\x9c\x97 " + std::to_string(status) + "\033[0m");
+            std::cout << "\033[90m  \xe2\x8c\x9c\xe2\x8c\x90 \033[0m" << head << " \033[90m"
+                      << label << "  " << std::fixed << std::setprecision(1) << ms << "ms\033[0m "
+                      << "\033[90m\xe2\x8c\x90\xe2\x8c\x8c\033[0m\n";
         }
     }
 
