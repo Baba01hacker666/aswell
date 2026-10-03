@@ -2,6 +2,24 @@
 
 Aswell features a lightweight native styling engine that translates CSS rules into TrueColor ANSI sequences and terminal layout.
 
+## Try It Without Restarting
+
+Customization is a loop, so Aswell makes the loop short:
+
+```bash
+aswell theme preview cyberpunk       # render your real prompt in any theme
+aswell theme new mytheme --from nord # scaffold ~/.config/aswell/themes/mytheme.css
+$EDITOR ~/.config/aswell/themes/mytheme.css
+aswell theme set mytheme             # live + persistent; your open shell updates too
+aswell doctor                        # validate config.txt, CSS and prompt.html
+```
+
+With `auto_reload=true` (the default) a running shell re-reads `theme.css`,
+`themes/<current>.css`, `prompt.html` and `config.txt` before drawing the next
+prompt — save the file, look at your prompt. `aswell reload` forces it, and a
+stylesheet that produces no rules at all is rejected so a half-typed file can
+never blank your prompt.
+
 ## Supported HTML Tags
 
 | Tag | Description | Default Content |
@@ -18,7 +36,12 @@ Aswell features a lightweight native styling engine that translates CSS rules in
 | `<mode>` | Vi / Emacs editing mode | `[NORMAL]` / `[INSERT]` |
 | `<symbol>` | Prompt input symbol | `❯` |
 | `<text>` | Arbitrary text string | Text content |
-| `<newline>` | Line break for multi-line prompts | `\n` |
+| `<newline>` / `<br>` | Line break for multi-line prompts | `\n` |
+| `<rprompt>` | Right-aligned prompt, column-aware | - |
+| `<statusbar>` | Full-width dock rendered above the prompt | - |
+| `<time>` | Current time, formatted by `time_format` | `14:05:09` |
+| `<date>` | Current date | `2026-10-03` |
+| `<cwd>` | Alias of `<directory>` | `~/path/to/dir` |
 
 ## Selectors
 
@@ -61,6 +84,7 @@ Aswell features a lightweight native styling engine that translates CSS rules in
     - `fire`: Flickering red-orange-yellow gradient
     - `spin`: Animated rotating spinner glyphs
     - `wave`: Sweeping intensity highlight
+    - `scramble`: Decodes text from random glyphs (aliases: `glitch`, `matrix`)
   - Example: `animation: pulse 1200ms infinite;`
 
 ## Example Theme

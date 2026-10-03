@@ -8,6 +8,8 @@ Aswell is an extremely customizable, modern Unix shell designed from the ground 
 ┌─────────────────────────────────────────────────────────┐
 │                 Interactive Terminal UI                 │
 ├─────────────────────────────────────────────────────────┤
+│     Customization Hub (settings registry + CLI/TUI)     │
+├─────────────────────────────────────────────────────────┤
 │        Customization & Layout Engine (DOM + CSS)        │
 ├─────────────────────────────────────────────────────────┤
 │              Animation & TrueColor Subsystem            │
@@ -46,6 +48,35 @@ Aswell is an extremely customizable, modern Unix shell designed from the ground 
 - **Executor (`executor.cpp`)**: Evaluates AST nodes, setups file descriptors and redirections (`<`, `>`, `>>`, `<&`, `>&`, `<<`, `<<<`), spawns pipelines with Unix `pipe()` and `fork()`, and orchestrates process execution.
 - **Builtins (`builtins.cpp`)**: Pure native implementation of standard POSIX shell builtins (`cd`, `pwd`, `echo`, `printf`, `test`/`[`, `exit`, `set`, `unset`, `export`, `readonly`, `alias`, `unalias`, `eval`, `exec`, `read`, `source`, `shift`, `trap`, `type`, `wait`, `jobs`, `fg`, `bg`, `kill`, `hash`, `umask`, `local`, `break`, `continue`, `return`).
 - **Job & Signal Control (`jobs.cpp`, `signals.cpp`)**: Terminal process group management via `tcsetpgrp()`, foreground/background task switching, and signal traps.
+
+### 1b. Customization Hub (`src/config/`)
+
+One declarative table — `SettingsRegistry` in `src/config/settings.cpp` — is the
+source of truth for every user-facing knob. A `ShellConfig` value is derived from
+it, and everything else is generated:
+
+```
+config.txt  ──parse_into()──►  ShellConfig  ──apply_config()──►  PromptEngine
+     ▲    (SettingsRegistry)       │    (src/main.cpp)           LineEditor
+     │                             ▼                             History
+`aswell config/theme/doctor` ◄── serialize()/update_keys()       ThemeManager
+        (SettingsCli)          (comments & ordering preserved)
+```
+
+Key consequences of that shape:
+
+- **Adding a setting is one row** in the registry plus one field in
+  `ShellConfig`; the CLI, TUI, JSON, `--help`, validation, theme-value checks and
+  Tab completion all appear automatically.
+- **`ConfigWatcher`** stats `config.txt`, `theme.css`, `themes/<active>.css` and
+  `prompt.html` before each prompt; on any change `apply_config()` re-runs, so
+  editing a stylesheet is a live preview (`auto_reload`, default on).
+- **`Environment::config_reload`** is a callback the interactive loop installs,
+  which is how `aswell config set` / `aswell theme set` apply to the *running*
+  shell without the builtin reaching into UI objects.
+- **`aswell doctor`** validates user files against the same tables
+  (`SettingsRegistry`, `PromptEngine::known_tags()`, `CSSParser::supported_properties()`),
+  so diagnostics can never claim a feature is unsupported that the engine accepts.
 
 ### 2. Customization & Styling Engine (`src/ui/`)
 - **DOM Engine (`dom.cpp`)**: Lightweight declarative tag tree (`<prompt>`, `<segment>`, `<user>`, `<hostname>`, `<directory>`, `<git>`, `<runtime>`, `<status>`, `<symbol>`).

@@ -49,9 +49,11 @@ aswell/
 │   │   ├── history.hpp      # History file management & deduplication
 │   │   └── suggestions.hpp  # History-based ghost text autosuggestions
 │   ├── config/              # Configuration & Themes
-│   │   ├── config.hpp       # config.txt parser & settings
-│   │   ├── config_editor.hpp# Interactive TUI configuration editor
-│   │   └── theme.hpp        # Theme preset loader & palette management
+│   │   ├── config.hpp       # config.txt parser, ShellConfig, ConfigWatcher, reports
+│   │   ├── settings.hpp     # Declarative settings registry (single source of truth)
+│   │   ├── settings_cli.hpp # `aswell config|theme|doctor|reload` customization hub
+│   │   ├── config_editor.hpp# Interactive TUI configuration editor (generated from the registry)
+│   │   └── theme.hpp        # Theme presets, user themes, resolution order
 │   └── plugin/              # Extensibility subsystem
 │       ├── plugin.hpp       # Dynamic C plugin loader (dlopen/dlsym)
 │       └── hooks.hpp        # Lifecycle hooks (on_start, pre_cmd, post_cmd, etc.)
@@ -60,8 +62,11 @@ aswell/
 │   ├── ui/
 │   ├── editor/
 │   ├── config/
+│   │   ├── settings.cpp     # The registry table: one row per user-facing knob
+│   │   ├── settings_cli.cpp # Settings hub: config/theme/doctor/reload commands
+│   │   └── ...
 │   ├── plugin/
-│   └── main.cpp             # Main shell entry point & interactive REPL
+│   └── main.cpp             # Main shell entry point, interactive REPL & apply_config()
 ├── tests/                   # Test suite
 │   ├── run_all_tests.sh     # Master test runner
 │   ├── test_lexer.cpp       # Tokenizer unit tests
@@ -123,6 +128,11 @@ The test suite validates:
 2. **POSIX Script Suite**: Control flow (`if`, `for`, `while`, `until`, `case`), functions, subshells, arithmetic.
 3. **Core Semantics**: Pipeline exit codes, trap handlers (`EXIT`, `INT`), subshell copy-on-write isolation.
 4. **Animation Engine Stability**: 60fps keyframe tick generators and ANSI sequence consistency.
+5. **Customization Hub** (`tests/test_config.cpp` + suite section 8): settings
+   registry lookups/aliases/validation, `config.txt` parse + round-trip, comment
+   preserving writes, `ConfigWatcher` hot-reload detection, theme resolution and
+   scaffolding, hub Tab completion, JSON output; end-to-end `aswell config`,
+   `aswell theme`, `aswell doctor` and `aswell reload` behaviour in a scratch `$HOME`.
 
 ---
 
@@ -142,6 +152,18 @@ When making code changes to this repository, AI agents **must** adhere to the fo
 - **No Default Scramble on Static Elements**:
   - The default theme and prompt must display the real `$USER` username cleanly (e.g. bold cyan/white).
   - Never apply `animation: scramble` to the username or prompt by default. Scramble is an opt-in visual effect for dynamic tickers and badges.
+
+### 2b. Customization Ergonomics
+- **One path for one action**: `aswell config …` / `aswell theme …` behave
+  identically as a builtin and as `aswell config …` on the CLI (both go through
+  `SettingsCli`). Do not duplicate theme or settings logic in `src/main.cpp`.
+- **Never store a setting in only one place**: writing `ASWELL_THEME` (or any
+  env var) is not persistence — persist through `ConfigManager::update_keys()`
+  and let `Environment::config_reload` apply it live.
+- **Fail loudly, then help**: unknown keys/typos must produce a suggestion
+  (`SettingsRegistry::suggest`) and a pasteable fix, both at startup and from
+  `aswell doctor`. A user editing `theme.css`/`prompt.html` sees the result on
+  the next prompt (`auto_reload`, default on) — keep that guarantee.
 
 ### 3. Custom Commands Subsystem
 Aswell provides a dedicated first-class custom commands directory:
@@ -223,10 +245,34 @@ Aswell provides dedicated primitives and environment variables for rich terminal
 3. Document the tag in `docs/CONFIGURATION.md` and `README.md`.
 4. Add a test case in `tests/test_ui.cpp`.
 
+### Adding a New Setting (the pattern to follow)
+Settings are **declarative**: `include/aswell/config/settings.hpp` +
+`src/config/settings.cpp` describe every knob once, and `config.txt` parsing,
+serialization, `aswell config list/get/set/toggle/unset/help/export/import`,
+the TUI editor, `aswell doctor` and Tab completion all derive from that table.
+
+1. Add the field with its default to `ShellConfig` (`include/aswell/config/config.hpp`).
+2. Add one row in `registry()` using a factory:
+   `bool_setting("my_flag", {"alias"}, "appearance", "Description", &ShellConfig::my_flag)`
+   (also available: `string_setting`, `enum_setting`, `int_setting`).
+3. **Make it real**: read it in `apply_config()` in `src/main.cpp` (the single
+   place that pushes settings into `PromptEngine`, `LineEditor`, `History`, …) so
+   it applies at startup, on `aswell reload`, on hot reload and after
+   `aswell config set` — never read config.txt ad hoc somewhere else.
+4. Add/extend a case in `tests/test_config.cpp` and mention it in
+   `docs/CONFIGURATION.md` (the table there mirrors the registry).
+
+Never hard-code a list of themes, settings or CSS properties elsewhere; ask
+`ThemeManager::theme_names()`, `SettingsRegistry::all()` or
+`CSSParser::supported_properties()`. `aswell doctor` validates user files
+against the same lists, which is what keeps docs, code and UX from drifting.
+
 ### Adding a New Animation Type
 1. Define the animation enum in `include/aswell/ui/animation.hpp`.
 2. Implement the mathematical interpolation in `src/ui/animation.cpp`.
-3. Register the CSS animation keyword in `src/ui/css_parser.cpp`.
+3. Register the CSS animation keyword in `src/ui/css_parser.cpp`
+   (`pulse`, `rainbow`, `fire`, `spin`, `wave`, `scramble`/`glitch`/`matrix`) and
+   add the name to `CSSParser::supported_properties()`-adjacent docs.
 4. Test in `bin/demo_engine` and `tests/test_ui.cpp`.
 
 ---
