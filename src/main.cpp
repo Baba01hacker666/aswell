@@ -7,6 +7,7 @@
 #include "aswell/ui/terminal.hpp"
 #include "aswell/ui/prompt.hpp"
 #include "aswell/editor/editor.hpp"
+#include "aswell/config/alias_library.hpp"
 #include "aswell/config/config.hpp"
 #include "aswell/config/theme.hpp"
 #include "aswell/config/config_editor.hpp"
@@ -26,6 +27,7 @@ static void print_help() {
               << "       aswell -c COMMAND [ARGS...]\n"
               << "       aswell config [COMMAND]        settings hub\n"
               << "       aswell theme [COMMAND]         prompt themes\n"
+              << "       aswell aliases [COMMAND]       curated alias library\n"
               << "       aswell doctor                  validate config, theme & prompt\n\n"
               << "A modern, beautiful, powerful Unix shell with POSIX compatibility.\n\n"
               << "Options:\n"
@@ -34,6 +36,7 @@ static void print_help() {
               << "  --no-theme     Disable theme engine and run plain POSIX output\n"
               << "  --safe-mode    Disable external plugins and third-party scripts\n"
               << "  --no-bashrc    Skip importing ~/.bashrc aliases and environment\n"
+              << "  -j, --jobs N   Default concurrency for `parallel` (also: parallel_jobs setting)\n"
               << "  --version, -v  Print version information\n"
               << "  --help, -h     Print this help message\n\n"
               << "Subcommands:\n"
@@ -41,6 +44,8 @@ static void print_help() {
               << "                 show, path, edit (interactive TUI). Try `aswell config help`.\n"
               << "  theme          list | set <name> | preview [name|--all] [--animate] | show |\n"
               << "                 new <name> [--from preset] | reset\n"
+              << "  aliases        Curated alias library: list, show, search, preview, install,\n"
+              << "                 uninstall — writes ~/.config/aswell/aliases (sourced on start)\n"
               << "  color          Print colored text or inspect palettes\n"
               << "  doctor         Check config.txt, theme, prompt.html, plugins and terminal setup\n"
               << "  reload         Re-read settings, theme and prompt template\n"
@@ -70,6 +75,7 @@ int main(int argc, char* argv[]) {
     std::vector<std::string> script_args;
     std::string custom_config_path;
     bool no_bashrc_flag = false;
+    long cli_parallel_jobs = -1;
 
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
@@ -103,12 +109,33 @@ int main(int argc, char* argv[]) {
             env.opt_safe_mode = true;
         } else if (arg == "--no-bashrc") {
             no_bashrc_flag = true;
+        } else if (arg == "-j" || arg == "--jobs" || str_util::starts_with(arg, "--jobs=")) {
+            // Default concurrency for the `parallel` builtin; beats parallel_jobs
+            // from config.txt because a flag on the command line is the newer wish.
+            std::string value;
+            size_t eq = arg.find('=');
+            if (eq != std::string::npos) {
+                value = arg.substr(eq + 1);
+            } else if (i + 1 < argc) {
+                value = argv[++i];
+            } else {
+                std::cerr << "aswell: " << arg << ": option requires an argument\n";
+                return 2;
+            }
+            char* end = nullptr;
+            long parsed = std::strtol(value.c_str(), &end, 10);
+            if (end == value.c_str() || parsed < 0) {
+                std::cerr << "aswell: " << arg << ": '" << value << "' is not a job count\n";
+                return 2;
+            }
+            cli_parallel_jobs = parsed;
         } else if (arg == "--config" && i + 1 < argc) {
             custom_config_path = argv[++i];
             // Honour the custom directory everywhere, including child processes
             // and the config/theme builtins, via the canonical env override.
             ::setenv("ASWELL_CONFIG_DIR", custom_config_path.c_str(), 1);
         } else if (arg == "config" || arg == "settings" || arg == "theme" || arg == "themes" ||
+                   arg == "aliases" ||
                    arg == "doctor" || arg == "check" || arg == "reload") {
             // The customization hub implements these identically for the CLI and
             // for the in-shell builtin, so behaviour can never diverge.
@@ -194,7 +221,54 @@ int main(int argc, char* argv[]) {
         }
     });
 
+    // Everything the shell applies from config.txt that is not about drawing the
+    // prompt: the `parallel` default and the curated alias library. Both the
+    // one-shot (-c / script / pipe) path and the interactive path call this, so
+    // `aswell -c` behaves like a shell regarding `ll`, `gs` and friends.
+    std::vector<std::string> curated_installed;   // what we installed from the library
+    bool parallel_jobs_exported = false;          // did we ever own $ASWELL_PARALLEL_JOBS?
+    auto apply_runtime_settings = [&](const ShellConfig& next_cfg) {
+        const long jobs_wanted = cli_parallel_jobs >= 0 ? cli_parallel_jobs : next_cfg.parallel_jobs;
+        // An inherited $ASWELL_PARALLEL_JOBS stays authoritative until the user
+        // configures the setting (or passes -j); once they do, we keep the value
+        // in sync — including writing 0 to mean "no preference, use the CPU count".
+        if (jobs_wanted > 0 || parallel_jobs_exported) {
+            env.set_var("ASWELL_PARALLEL_JOBS", std::to_string(jobs_wanted > 0 ? jobs_wanted : 0), true);
+        }
+        parallel_jobs_exported = jobs_wanted > 0;
+
+        // Undo the previous selection first, so `aswell config set curated_aliases ''`
+        // (or a narrower selection) actually removes aliases. Only entries we
+        // installed are touched — hand-written aliases are never uninstalled.
+        AliasLibrary::uninstall(env, AliasLibrary::for_names(curated_installed));
+        curated_installed.clear();
+
+        std::string curated = str_util::trim(next_cfg.curated_aliases);
+        if (curated.empty() || env.opt_safe_mode) return;
+        std::vector<std::string> unknown;
+        std::vector<const AliasDef*> defs = AliasLibrary::expand(str_util::split(curated, ','), unknown);
+        std::vector<std::string> skipped;
+        curated_installed = AliasLibrary::install(env, &executor, defs, false, skipped);
+        for (const auto& word : unknown) {
+            std::cerr << "aswell: curated_aliases: no category or entry named '" << word
+                      << "' — see: aswell aliases list\n";
+        }
+        // `skipped` is intentionally not reported at startup: an alias the user
+        // defined by hand winning over the library is the expected outcome, and
+        // `aswell aliases list` shows the same information on demand.
+        (void)skipped;
+    };
+
     // 1. Run command string (-c)
+    // `aswell -c` and `aswell script.sh` get the alias library too, so `ll`,
+    // `gs` and friends behave the same in a one-shot command as in a shell.
+    // (Unlike an interactive shell, no ~/.bashrc import here: scripts must stay
+    // reproducible, and bash itself does not source rc files for -c either.)
+    if (!command_string.empty() || !script_path.empty() || !isatty(STDIN_FILENO)) {
+        apply_runtime_settings(early_cfg);
+        AliasLibrary::source_into(executor);
+    }
+
     if (!command_string.empty()) {
         SignalManager::init_signals(false);
         int ret = executor.execute_string(command_string);
@@ -251,6 +325,12 @@ int main(int argc, char* argv[]) {
             BashCompat::import_bashrc(env, &executor, false);
         }
     }
+    // Curated aliases installed by `aswell aliases install` live in a plain
+    // shell file the user can edit. Load it after the bashrc import (so the
+    // user's own choices win over what we imported) and before ~/.aswellrc
+    // (so the rc file always wins over everything).
+    AliasLibrary::source_into(executor);
+
     const char* home = std::getenv("HOME");
     std::string rc_path;
     if (home) {
@@ -304,6 +384,9 @@ int main(int argc, char* argv[]) {
         auto_reload_enabled = next_cfg.auto_reload;
         command_banner_enabled = next_cfg.enable_command_banner;
         env.opt_vi_mode = next_cfg.vi_mode;
+
+        // `parallel` default + curated alias library (shared with the one-shot path).
+        apply_runtime_settings(next_cfg);
 
         prompt_engine.set_animations_enabled(next_cfg.enable_animation);
         prompt_engine.set_time_format(next_cfg.time_format);

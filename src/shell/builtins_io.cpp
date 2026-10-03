@@ -925,6 +925,13 @@ int Builtins::builtin_help(const std::vector<std::string>& /*args*/) {
               << "  kill [-s sig] pid  Send a signal to a process or job\n"
               << "  umask [-S] [mode]  Display (octal/symbolic) or set the file mode mask\n"
               << "  jobs / fg / bg     Job control commands\n"
+              << "  parallel [opts] CMD...  Run jobs concurrently (-j, -k keep-order, -T timeout,\n"
+              << "                     -e halt-on-error, TEMPLATE ::: items, or one job per stdin line)\n"
+              << "  retry [opts] CMD...     Rerun a command until it succeeds (-n tries, -d delay,\n"
+              << "                     -x backoff cap, -u until-status)\n"
+              << "  timeout SECS -- CMD...  Deadline for any command (124 on expiry, -k to escalate\n"
+              << "                     to SIGKILL, -s to pick the first signal)\n"
+              << "  local VAR=value  Function-local variable (set, scope-limited)\n"
               << "  wait [job...]      Wait for background jobs\n"
               << "  history [-c]       Show or clear command history\n"
               << "  eval / exec / source / . / shift / local / break / continue / return\n"
@@ -932,6 +939,9 @@ int Builtins::builtin_help(const std::vector<std::string>& /*args*/) {
               << "  aswell color       Print colored text or inspect palettes\n"
               << "  aswell config      Settings hub: list | get | set | toggle | unset | help | edit (TUI)\n"
               << "  aswell theme       list | set <name> | preview [--all] | show | new <name> | reset\n"
+              << "  aswell aliases     curated alias library: list | show <name> | search <term> |\n"
+              << "                     preview <sel> | install <sel> | uninstall <sel>  (sel = category,\n"
+              << "                     name, comma list or 'all'; e.g. aswell aliases install git)\n"
               << "  aswell doctor      Validate config.txt, theme stylesheet, prompt.html & environment\n"
               << "  aswell reload      Re-read settings, theme and prompt template (edits apply live)\n";
     return 0;

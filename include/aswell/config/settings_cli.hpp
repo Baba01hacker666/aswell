@@ -5,6 +5,10 @@
 #include "aswell/shell/environment.hpp"
 
 namespace aswell {
+class Executor;
+}
+
+namespace aswell {
 
 // The user-facing customization hub: `aswell config`, `aswell theme`,
 // `aswell doctor` and `aswell reload`.
@@ -21,6 +25,11 @@ public:
     static int handle_theme(const std::vector<std::string>& args, Environment& env);
     static int handle_doctor(const std::vector<std::string>& args, Environment& env);
     static int handle_reload(const std::vector<std::string>& args, Environment& env);
+    // The curated alias/function library. `executor` is needed to define shell
+    // functions in the running session; the standalone CLI passes nullptr and
+    // only writes ~/.config/aswell/aliases.
+    static int handle_aliases(const std::vector<std::string>& args, Environment& env,
+                              Executor* executor = nullptr);
 
     static void print_help();
 

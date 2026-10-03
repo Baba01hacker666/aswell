@@ -24,6 +24,8 @@ struct ShellConfig {
     bool auto_reload = true;
     int history_size = 10000;
     bool history_ignore_dups = false;
+    std::string curated_aliases;             // "" = off; else "all", "git,files", …
+    int parallel_jobs = 0;                   // 0 = one job per CPU
     std::string time_format = "%H:%M:%S";
     std::string date_format = "%Y-%m-%d";
     std::string custom_username;

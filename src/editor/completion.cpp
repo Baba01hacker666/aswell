@@ -1,5 +1,6 @@
 #include "aswell/editor/completion.hpp"
 #include "aswell/shell/builtins.hpp"
+#include "aswell/config/alias_library.hpp"
 #include "aswell/config/settings.hpp"
 #include "aswell/config/theme.hpp"
 #include "aswell/config/config.hpp"
@@ -170,6 +171,9 @@ std::vector<CompletionCandidate> CompletionEngine::complete_command(const std::s
         {"wait", "builtin: wait for jobs"}, {"jobs", "builtin: list jobs"},
         {"fg", "builtin: foreground job"}, {"bg", "builtin: background job"},
         {"kill", "builtin: send signal"}, {"history", "builtin: command history"},
+        {"parallel", "builtin: run jobs concurrently"}, {"retry", "builtin: rerun until success"},
+        {"timeout", "builtin: kill a slow command"}, {"local", "builtin: function-local variable"},
+        {"ulimit", "builtin: resource limits"}, {"umask", "builtin: file mode mask"},
         {"aswell", "builtin: configuration"}, {"color", "builtin: colored TrueColor text"},
         {"dirs", "builtin: directory stack"}, {"pushd", "builtin: push directory"},
         {"popd", "builtin: pop directory"}, {"command", "builtin: bypass functions"},
@@ -511,7 +515,7 @@ std::vector<CompletionCandidate> CompletionEngine::complete(const std::string& b
             // candidates come from SettingsRegistry, so anything documented is
             // completable without touching this file.
             static const std::vector<std::string> kSubs = {
-                "config", "theme", "color", "custom", "template", "hooks", "ui",
+                "config", "theme", "aliases", "color", "custom", "template", "hooks", "ui",
                 "event", "bash", "doctor", "reload", "help", "version",
             };
 
@@ -527,6 +531,16 @@ std::vector<CompletionCandidate> CompletionEngine::complete(const std::string& b
             } else if (args.size() >= 3 && args[1] == "theme" && arg_index == 2) {
                 candidates = {"list", "set", "preview", "show", "new", "reset"};
                 kind = "theme command";
+            } else if (args.size() >= 3 && args[1] == "aliases" && arg_index == 2) {
+                candidates = {"list", "show", "install", "preview", "remove", "uninstall", "help"};
+                kind = "alias command";
+            } else if (args.size() >= 4 && args[1] == "aliases" && arg_index >= 3 &&
+                       (args[2] == "install" || args[2] == "preview" || args[2] == "remove")) {
+                // Categories first; entry names are completed as file words by the
+                // caller's fallback, which would be noise here.
+                for (const auto& cat : AliasLibrary::categories()) candidates.push_back(cat);
+                candidates.push_back("all");
+                kind = "alias pack";
             } else if (args.size() >= 3 && args[1] == "config" && args[2] == "theme" &&
                        arg_index == 3) {
                 // Legacy spelling: `aswell config theme <name>`.

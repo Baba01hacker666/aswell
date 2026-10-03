@@ -17,6 +17,7 @@ int Builtins::builtin_aswell(const std::vector<std::string>& args, Environment& 
         std::cout << SHELL_BANNER << "\n"
                   << "Settings:   aswell config list | aswell config set <key> <value> | aswell config help\n"
                   << "Themes:     aswell theme list | aswell theme preview --all | aswell theme set <name>\n"
+                  << "Aliases:    aswell aliases list | aswell aliases install files,nav,git\n"
                   << "Diagnostics: aswell doctor        Colors: aswell color, color rainbow <text>\n";
         return 0;
     }
@@ -46,6 +47,12 @@ int Builtins::builtin_aswell(const std::vector<std::string>& args, Environment& 
         theme_args.push_back("theme");
         for (size_t i = 2; i < args.size(); ++i) theme_args.push_back(args[i]);
         return SettingsCli::handle_theme(theme_args, env);
+    }
+    if (sub == "aliases" || sub == "alias-packs") {
+        std::vector<std::string> alias_args;
+        alias_args.push_back("aliases");
+        for (size_t i = 2; i < args.size(); ++i) alias_args.push_back(args[i]);
+        return SettingsCli::handle_aliases(alias_args, env, &executor);
     }
     if (sub == "config" || sub == "settings") {
         std::vector<std::string> cfg_args;

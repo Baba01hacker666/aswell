@@ -1,4 +1,6 @@
 #include "aswell/config/settings_cli.hpp"
+#include "aswell/config/alias_library.hpp"
+#include <algorithm>
 #include "aswell/config/config.hpp"
 #include "aswell/config/settings.hpp"
 #include "aswell/config/theme.hpp"
@@ -832,6 +834,217 @@ int SettingsCli::handle_reload(const std::vector<std::string>& args, Environment
 }
 
 // ---------------------------------------------------------------------------
+// aswell aliases — the curated alias/function library
+// ---------------------------------------------------------------------------
+namespace {
+
+std::string human_alias_def(const AliasDef& def) {
+    if (def.kind == AliasKind::ALIAS) return def.definition;
+    return std::string("<shell function>");
+}
+
+void aliases_usage() {
+    std::cout << "usage: aswell aliases <command> [args...]\n"
+              << "\n"
+              << "  list                    every category, with what is installed\n"
+              << "  show <name>             definition and description of one entry\n"
+              << "  search <term>           find entries by name or description\n"
+              << "  preview <sel...>        print the shell source for a selection\n"
+              << "  install [--force] <sel...>  apply now and save to ~/.config/aswell/aliases\n"
+              << "  uninstall <sel...>      remove from this shell and from that file\n"
+              << "  path                    where the alias file lives\n"
+              << "\n"
+              << "<sel> is a category (git), a name (ll), a comma list (git,nav) or 'all'.\n"
+              << "Try: aswell aliases install files,nav,git\n";
+}
+
+} // namespace
+
+int SettingsCli::handle_aliases(const std::vector<std::string>& args, Environment& env,
+                               Executor* executor) {
+    const std::string action = args.size() > 1 ? args[1] : "list";
+    std::vector<std::string> selectors;
+    bool force = false;
+    for (size_t i = 2; i < args.size(); ++i) {
+        if (args[i] == "--force" || args[i] == "-f") {
+            force = true;   // replace an existing definition with the curated one
+            continue;
+        }
+        selectors.push_back(args[i]);
+    }
+
+    if (action == "help" || action == "--help" || action == "-h") {
+        aliases_usage();
+        return 0;
+    }
+    if (action == "path") {
+        std::cout << AliasLibrary::file_path() << "\n";
+        return 0;
+    }
+
+    if (action == "list") {
+        bool all = false;
+        for (const auto& s : selectors) {
+            if (s == "--all" || s == "-a") all = true;
+        }
+        std::vector<std::string> active = AliasLibrary::names_in_file();
+        size_t shown = 0, total = 0;
+        for (const auto& cat : AliasLibrary::categories()) {
+            std::vector<const AliasDef*> defs = AliasLibrary::for_category(cat);
+            std::ostringstream body;
+            size_t in_cat = 0;
+            for (const AliasDef* def : defs) {
+                total++;
+                const bool missing_tool =
+                    def->needs && *def->needs && env.find_in_path(def->needs).empty();
+                if (missing_tool && !all) continue;   // would only be noise
+                std::string current;
+                const bool live = env.get_alias(def->name, current) || env.has_function(def->name);
+                const bool saved = std::find(active.begin(), active.end(), def->name) != active.end();
+                std::string mark = live ? "\033[32m✓\033[0m" : (saved ? "\033[32m•\033[0m" : " ");
+                std::string note;
+                if (missing_tool) note = "\033[90m  (needs " + std::string(def->needs) + ")\033[0m";
+                body << "  " << mark << " " << std::left << std::setw(12) << def->name
+                     << "\033[90m" << human_alias_def(*def) << "\033[0m"
+                     << "   " << def->description << note << "\n";
+                in_cat++;
+                shown++;
+            }
+            if (in_cat == 0) continue;
+            std::cout << "\033[1m" << cat << "\033[0m  \033[90m(" << in_cat << " of "
+                      << defs.size() << ")\033[0m\n" << body.str() << "\n";
+        }
+        if (shown < total) {
+            std::cout << "\033[90m" << (total - shown)
+                      << " more entry/entries need tools this machine lacks — add --all to see them\033[0m\n\n";
+        }
+        if (active.empty()) {
+            std::cout << "\033[90mNothing installed yet — aswell aliases install files,nav,git\033[0m\n";
+        } else {
+            std::cout << "\033[90m✓ live in this shell   • saved in " << AliasLibrary::file_path()
+                      << "   (" << active.size() << " entr" << (active.size() == 1 ? "y" : "ies")
+                      << " — aswell aliases uninstall <name> to drop one)\033[0m\n";
+        }
+        return 0;
+    }
+
+    if (action == "show") {
+        if (selectors.empty()) {
+            std::cerr << "aswell: aliases show needs a name\n";
+            return 1;
+        }
+        const AliasDef* def = AliasLibrary::find(selectors[0]);
+        if (!def) {
+            std::cerr << "aswell: aliases: unknown entry '" << selectors[0] << "'\n";
+            std::cerr << "  List everything with: aswell aliases list\n";
+            return 1;
+        }
+        std::cout << "\033[1m" << def->name << "\033[0m  \033[90m" << def->category
+                  << (def->kind == AliasKind::FUNCTION ? " (function)" : "") << "\033[0m\n"
+                  << "  " << def->description << "\n\n";
+        std::cout << AliasLibrary::render({def}) << "\n";
+        return 0;
+    }
+
+    if (action == "search") {
+        if (selectors.empty()) {
+            std::cerr << "aswell: aliases search needs a term\n";
+            return 1;
+        }
+        std::string term = str_util::to_lower(str_util::trim(selectors[0]));
+        size_t hits = 0;
+        for (const auto& def : AliasLibrary::all()) {
+            std::string hay = str_util::to_lower(std::string(def.name) + " " + def.description + " " +
+                                                  def.category + " " + def.definition);
+            if (hay.find(term) == std::string::npos) continue;
+            std::cout << "  " << std::left << std::setw(12) << def.name << "\033[90m"
+                      << human_alias_def(def) << "\033[0m   " << def.description << "\n";
+            hits++;
+        }
+        if (!hits) {
+            std::cout << "aswell: aliases: no entry matches '" << term << "'\n";
+            return 1;
+        }
+        return 0;
+    }
+
+    if (action != "preview" && action != "install" && action != "uninstall" && action != "remove") {
+        std::cerr << "aswell: aliases: unknown command '" << action << "'\n";
+        aliases_usage();
+        return 1;
+    }
+
+    std::vector<std::string> unknown;
+    std::vector<const AliasDef*> defs = AliasLibrary::expand(selectors, unknown);
+    if (!unknown.empty()) {
+        for (const auto& word : unknown) {
+            std::cerr << "aswell: aliases: no category or entry named '" << word << "'\n";
+        }
+        std::cerr << "  Available: ";
+        bool first = true;
+        for (const auto& cat : AliasLibrary::categories()) {
+            std::cerr << (first ? "" : ", ") << cat;
+            first = false;
+        }
+        std::cerr << "\n";
+        return 1;
+    }
+    if (defs.empty()) {
+        std::cerr << "aswell: aliases: nothing selected (try: aswell aliases install files,nav,git)\n";
+        return 1;
+    }
+
+    if (action == "preview") {
+        std::cout << AliasLibrary::render(defs);
+        return 0;
+    }
+
+    if (action == "uninstall" || action == "remove") {
+        AliasLibrary::uninstall(env, defs);
+        std::string err;
+        const bool file_ok = AliasLibrary::remove_from_file(defs, err);
+        std::cout << "\033[32m✓\033[0m removed " << defs.size() << " entry/entries";
+        std::cout << (file_ok ? " from this shell and from " + AliasLibrary::file_path()
+                              : " from this shell")
+                  << "\n";
+        if (!file_ok) std::cout << "  \033[90m(" << err << ")\033[0m\n";
+        return 0;
+    }
+
+    // install
+    std::vector<std::string> skipped;
+    std::vector<std::string> live = AliasLibrary::install(env, executor, defs, force, skipped);
+
+    std::string err;
+    if (!AliasLibrary::append_to_file(defs, err)) {
+        std::cerr << "aswell: aliases: " << err << "\n";
+        return 1;
+    }
+
+    size_t warnings = 0;
+    for (const AliasDef* def : defs) {
+        if (def->shadows) warnings++;
+    }
+    std::cout << "\033[32m✓\033[0m installed " << defs.size() << " entry/entries into "
+              << AliasLibrary::file_path() << "\n";
+    if (env.opt_interactive) {
+        std::cout << "  applied to this shell (" << live.size() << " new)";
+        if (!skipped.empty()) std::cout << ", skipped " << skipped.size();
+        std::cout << "\n";
+    } else {
+        std::cout << "  new shells pick these up automatically\n";
+    }
+    for (const auto& note : skipped) {
+        std::cout << "  \033[90m- " << note << "\033[0m\n";
+    }
+    if (warnings) {
+        std::cout << "\033[33m!\033[0m " << warnings
+                  << " of them override a real command (that is the point of the `safe` category)\n";
+    }
+    return 0;
+}
+
+// ---------------------------------------------------------------------------
 // aswell doctor
 // ---------------------------------------------------------------------------
 namespace {
@@ -1183,6 +1396,40 @@ int SettingsCli::handle_doctor(const std::vector<std::string>& args, Environment
                  "aswell config set auto_reload true");
     }
 
+    // 9. Alias library: the curated setting and the file it writes.
+    {
+        std::string alias_path = config_dir + "/aliases";
+        std::vector<std::string> saved = AliasLibrary::names_in_file();
+        if (!saved.empty()) {
+            doc.good("alias library: " + std::to_string(saved.size()) +
+                     " entr" + (saved.size() == 1 ? "y" : "ies") + " in " + alias_path);
+        } else if (stat(alias_path.c_str(), &st) == 0) {
+            doc.problem(alias_path + " exists but defines nothing aswell can recognise",
+                        "aswell aliases install files,nav,git");
+        }
+        std::string curated = str_util::trim(cfg.curated_aliases);
+        if (!curated.empty()) {
+            std::vector<std::string> unknown;
+            std::vector<const AliasDef*> defs = AliasLibrary::expand(str_util::split(curated, ','), unknown);
+            if (!unknown.empty()) {
+                std::string list;
+                for (const auto& word : unknown) {
+                    if (!list.empty()) list += ", ";
+                    list += "'" + word + "'";
+                }
+                doc.problem("curated_aliases names " + std::to_string(unknown.size()) +
+                                " unknown selection(s): " + list,
+                            "aswell aliases list   (then re-set curated_aliases)");
+            } else {
+                doc.good("curated_aliases = '" + curated + "' installs " + std::to_string(defs.size()) +
+                         " entr" + (defs.size() == 1 ? "y" : "ies") + " at every start");
+            }
+        } else {
+            doc.hint("no curated aliases enabled — the built-in library is idle",
+                     "aswell config set curated_aliases files,nav,git   (or: aswell aliases install …)");
+        }
+    }
+
     // Report: problems are red flags, hints are optional polish.
     if (!quiet) {
         std::cout << kBold << "aswell doctor" << kReset << kDim << "  " << config_dir << kReset << "\n";
@@ -1218,8 +1465,9 @@ void SettingsCli::print_help() {
     std::cout << "Customization hub:\n"
               << "  aswell config [list|set|get|toggle|unset|show|export|import|help]   all shell settings\n"
               << "  aswell theme  [list|set|preview|show|new|reset]                      prompt themes\n"
+              << "  aswell aliases [list|show|search|install|preview|uninstall]            curated alias library\n"
               << "  aswell doctor [--quiet]                                              validate config, theme & prompt\n"
-              << "  aswell reload                                                         re-read theme/prompt/settings\n";
+              << "  aswell reload                                                        re-read theme/prompt/settings\n";
 }
 
 std::string SettingsCli::settings_as_json(const ShellConfig& cfg, bool include_defaults) {
