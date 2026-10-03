@@ -60,6 +60,8 @@ public:
 private:
     Environment& env_;
     JobManager& jobs_;
+    // Guards recursive alias expansion (an alias that expands to itself).
+    size_t alias_depth_ = 0;
     Expansion expansion_;
     double last_command_duration_ms_ = 0.0;
 };

@@ -99,12 +99,23 @@ void Environment::set_var(const std::string& name, const std::string& value, boo
     }
 }
 
-void Environment::set_local_var(const std::string& name, const std::string& value) {
+void Environment::set_scoped_var(const std::string& name, const std::string& value) {
     if (!local_scopes_.empty()) {
         local_scopes_.back()[name] = Variable{value, false, false};
-    } else {
-        set_var(name, value, false);
+        return;
     }
+    set_var(name, value, false);
+}
+
+void Environment::set_local_var(const std::string& name, const std::string& value) {
+    // Target the innermost *function* scope, skipping the transient scope that
+    // only exists to hold this command's prefix assignments.
+    for (size_t i = local_scopes_.size(); i-- > 0;) {
+        if (i < local_scopes_transient_.size() && local_scopes_transient_[i]) continue;
+        local_scopes_[i][name] = Variable{value, false, false};
+        return;
+    }
+    set_var(name, value, false);
 }
 
 std::string Environment::get_var(const std::string& name) const {
@@ -263,11 +274,20 @@ std::vector<char*> Environment::get_envp() const {
 
 void Environment::push_scope() {
     local_scopes_.emplace_back();
+    local_scopes_transient_.push_back(false);
+}
+
+void Environment::push_transient_scope() {
+    local_scopes_.emplace_back();
+    local_scopes_transient_.push_back(true);
 }
 
 void Environment::pop_scope() {
     if (!local_scopes_.empty()) {
         local_scopes_.pop_back();
+    }
+    if (!local_scopes_transient_.empty()) {
+        local_scopes_transient_.pop_back();
     }
 }
 

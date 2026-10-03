@@ -20,6 +20,10 @@ public:
     // Variable management
     void set_var(const std::string& name, const std::string& value, bool export_var = false);
     void set_local_var(const std::string& name, const std::string& value);
+    // Writes into the innermost open scope, creating it there even if the name
+    // is unknown. Used for `VAR=v cmd` prefix assignments so they cannot leak
+    // into the global environment the way set_var() would for a new name.
+    void set_scoped_var(const std::string& name, const std::string& value);
     std::string get_var(const std::string& name) const;
     bool has_var(const std::string& name) const;
     bool is_exported(const std::string& name) const;
@@ -33,8 +37,14 @@ public:
     std::vector<std::string> get_env_strings() const;
     std::vector<char*> get_envp() const;
 
-    // Scope management for functions
+    // Scope management for functions.
+    //
+    // `push_scope()` opens a *function* scope: the one `local` writes into.
+    // `push_transient_scope()` opens the short-lived scope that holds `VAR=v cmd`
+    // prefix assignments; it must not catch `local`, otherwise `local` inside a
+    // function silently evaporates as soon as the builtin call returns.
     void push_scope();
+    void push_transient_scope();
     void pop_scope();
 
     // Positional parameters
@@ -129,6 +139,8 @@ public:
 private:
     std::unordered_map<std::string, Variable> global_vars_;
     std::vector<std::unordered_map<std::string, Variable>> local_scopes_;
+    // Parallel to local_scopes_: true for the prefix-assignment scopes.
+    std::vector<bool> local_scopes_transient_;
 
     std::vector<std::vector<std::string>> positional_stack_;
     std::vector<std::string> current_positional_;

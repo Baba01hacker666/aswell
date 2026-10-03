@@ -22,6 +22,83 @@ static std::string get_fallback_shell() {
     return "/bin/sh";
 }
 
+// Renders an AST fragment back into a short, human readable command string.
+// Used for job labels (`jobs`, `fg`, `bg` and the "[1]+ Done" notifications),
+// which used to all print a bare "&".
+static std::string describe_and_or(const AndOrNode& node);
+
+static std::string describe_command(const CommandNode& node) {
+    switch (node.get_type()) {
+        case ASTNodeType::SIMPLE_COMMAND: {
+            const auto& simple = static_cast<const SimpleCommandNode&>(node);
+            std::string out;
+            for (const auto& word : simple.words) {
+                if (!out.empty()) out += ' ';
+                out += word;
+            }
+            for (const auto& [name, value] : simple.assignments) {
+                if (!out.empty()) out += ' ';
+                out += name + "=" + value;
+            }
+            return out;
+        }
+        case ASTNodeType::PIPELINE: {
+            const auto& pipe = static_cast<const PipelineNode&>(node);
+            std::string out = pipe.negated ? "! " : "";
+            for (size_t i = 0; i < pipe.commands.size(); ++i) {
+                if (i) out += " | ";
+                if (pipe.commands[i]) out += describe_command(*pipe.commands[i]);
+            }
+            return out;
+        }
+        case ASTNodeType::AND_OR:
+            return describe_and_or(static_cast<const AndOrNode&>(node));
+        case ASTNodeType::COMMAND_LIST: {
+            const auto& list = static_cast<const CommandListNode&>(node);
+            std::string out;
+            for (const auto& item : list.items) {
+                if (!out.empty()) out += item.async ? " & " : "; ";
+                if (item.and_or) out += describe_and_or(*item.and_or);
+            }
+            return out;
+        }
+        case ASTNodeType::SUBSHELL: {
+            const auto& sub = static_cast<const SubshellNode&>(node);
+            std::string out = "(";
+            if (sub.body) out += describe_command(*sub.body);
+            out += ")";
+            return out;
+        }
+        case ASTNodeType::GROUPING: {
+            const auto& grp = static_cast<const GroupingNode&>(node);
+            std::string out = "{ ";
+            if (grp.body) out += describe_command(*grp.body);
+            out += " ; }";
+            return out;
+        }
+        case ASTNodeType::IF:      return "if …; then …; fi";
+        case ASTNodeType::FOR:     return "for …; do …; done";
+        case ASTNodeType::WHILE:   return "while …; do …; done";
+        case ASTNodeType::CASE:    return "case …; esac";
+        case ASTNodeType::FUNCTION_DEF: {
+            const auto& fn = static_cast<const FunctionDefNode&>(node);
+            return "function " + fn.name + " ()";
+        }
+    }
+    return "";
+}
+
+static std::string describe_and_or(const AndOrNode& node) {
+    std::string out;
+    for (const auto& [op, pipeline] : node.pipelines) {
+        if (!out.empty()) {
+            out += (op == AndOrNode::Op::AND) ? " && " : " || ";
+        }
+        if (pipeline) out += describe_command(*pipeline);
+    }
+    return out;
+}
+
 Executor::Executor(Environment& env, JobManager& jobs)
     : env_(env), jobs_(jobs), expansion_(env, [this](const std::string& script) {
         return this->evaluate_command_substitution(script);
@@ -241,19 +318,33 @@ int Executor::execute_command_list(CommandListNode& list, ControlFlow& flow) {
         }
 
         if (item.async) {
-            // Asynchronous command (&)
+            // Asynchronous command (&). The child leads its own process group,
+            // which is what makes `fg`, `bg` and `kill %1` work and keeps
+            // Ctrl-C from hitting a job that was deliberately backgrounded.
+            std::string label = item.and_or ? describe_and_or(*item.and_or) : std::string();
+            if (label.empty()) label = "async command";
+
             pid_t pid = fork();
             if (pid == 0) {
-                // Child process
+                setpgid(0, 0);
                 SignalManager::reset_signals_for_child();
                 ControlFlow child_flow;
                 int st = execute_and_or(*item.and_or, child_flow);
+                std::cout.flush();
                 _exit(st);
             } else if (pid > 0) {
+                // Also set from the parent: the child may exec before its own
+                // setpgid() runs, and job control needs the group to exist.
+                setpgid(pid, pid);
                 env_.last_bg_pid = pid;
-                jobs_.add_job(pid, "&", {pid});
-                std::cout << "[" << pid << "]\n";
+                int job_id = jobs_.add_job(pid, label, {pid});
+                if (env_.opt_interactive) {
+                    std::cout << "[" << job_id << "] " << pid << "\n";
+                }
                 last_status = 0;
+            } else {
+                std::cerr << "aswell: fork failed\n";
+                last_status = 1;
             }
         } else {
             last_status = execute_and_or(*item.and_or, flow);
@@ -427,10 +518,44 @@ int Executor::execute_simple_command(SimpleCommandNode& cmd, ControlFlow& flow) 
 
     std::string cmd_name = expanded_words[0];
 
-    // Check aliases
+    // Alias expansion.
+    //
+    // A plain `cmd -flags` body is spliced in as words (the common case, and
+    // cheap). Anything richer — quoting, $vars, command substitution, pipes,
+    // redirections — is rebuilt as source text and re-parsed, so `path` or
+    // `hist` style aliases behave like they do in bash instead of turning the
+    // quotes into literal arguments. A depth guard makes recursive aliases fail
+    // with a clear error instead of hanging.
     std::string alias_val;
     if (env_.get_alias(cmd_name, alias_val)) {
-        // Expand alias
+        const bool needs_reparsing = alias_val.find_first_of("|;&$'`\"\\<>") != std::string::npos;
+        if (needs_reparsing) {
+            if (alias_depth_ >= 16) {
+                std::cerr << "aswell: alias loop expanding '" << cmd_name << "'\n";
+                return 1;
+            }
+            std::string rebuilt = alias_val;
+            for (size_t j = 1; j < cmd.words.size(); ++j) {
+                rebuilt += ' ';
+                rebuilt += cmd.words[j];
+            }
+            std::vector<SavedRedirection> saved;
+            if (!apply_redirections(cmd.redirections, saved)) {
+                restore_redirections(saved);
+                return 1;
+            }
+            env_.push_transient_scope();
+            for (const auto& [k, v] : cmd.assignments) {
+                env_.set_scoped_var(k, expansion_.expand_word_single(v));
+            }
+            ++alias_depth_;
+            int status = execute_string(rebuilt);
+            --alias_depth_;
+            env_.pop_scope();
+            restore_redirections(saved);
+            return status;
+        }
+
         auto alias_parts = str_util::split(alias_val, ' ');
         if (!alias_parts.empty()) {
             std::vector<std::string> new_words;
@@ -449,10 +574,11 @@ int Executor::execute_simple_command(SimpleCommandNode& cmd, ControlFlow& flow) 
             return 1;
         }
 
-        // Apply temporary prefix assignments
-        env_.push_scope();
+        // Apply temporary prefix assignments (a transient scope: `local` inside
+        // the called function must not land here).
+        env_.push_transient_scope();
         for (const auto& [k, v] : cmd.assignments) {
-            env_.set_var(k, expansion_.expand_word_single(v));
+            env_.set_scoped_var(k, expansion_.expand_word_single(v));
         }
 
         int status = Builtins::execute(cmd_name, expanded_words, env_, jobs_, *this, flow);
@@ -471,10 +597,11 @@ int Executor::execute_simple_command(SimpleCommandNode& cmd, ControlFlow& flow) 
             return 1;
         }
 
-        // Apply temporary prefix assignments
-        env_.push_scope();
+        // Apply temporary prefix assignments (a transient scope: `local` inside
+        // the called function must not land here).
+        env_.push_transient_scope();
         for (const auto& [k, v] : cmd.assignments) {
-            env_.set_var(k, expansion_.expand_word_single(v));
+            env_.set_scoped_var(k, expansion_.expand_word_single(v));
         }
 
         std::vector<std::string> func_args(expanded_words.begin() + 1, expanded_words.end());
@@ -818,7 +945,9 @@ std::vector<std::string> Executor::find_similar_commands(const std::string& targ
     static const std::vector<std::string> b_list = {
         "cd", "pwd", "echo", "printf", "test", "exit", "set", "unset", "export",
         "readonly", "alias", "unalias", "eval", "exec", "read", "source", "shift",
-        "trap", "type", "wait", "jobs", "fg", "bg", "kill", "aswell"
+        "trap", "type", "wait", "jobs", "fg", "bg", "kill", "aswell",
+        "parallel", "retry", "timeout", "local", "history", "which", "time",
+        "ulimit", "umask", "dirs", "pushd", "popd", "command", "true", "false"
     };
     for (const auto& b : b_list) check_name(b);
 
