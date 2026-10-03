@@ -8,6 +8,9 @@ echo "=================================================="
 BUILD_DIR="bin"
 mkdir -p "$BUILD_DIR"
 
+# Removes ANSI/SGR sequences so behaviour assertions can match on plain text.
+strip_ansi() { sed -e "s/$(printf '\033')\[[0-9;]*m//g"; }
+
 CXX="${CXX:-g++}"
 CXXFLAGS="${CXXFLAGS:--std=c++20 -O2}"
 LDFLAGS="${LDFLAGS:-}"
@@ -24,6 +27,7 @@ $CXX $CXXFLAGS -Iinclude tests/test_completion.cpp src/shell/*.o src/editor/*.o 
 $CXX $CXXFLAGS -Iinclude tests/test_cd_hash_umask.cpp src/shell/*.o src/editor/*.o src/ui/*.o src/config/*.o -o bin/test_cd_hash_umask $LDFLAGS
 $CXX $CXXFLAGS -Iinclude tests/test_getopts.cpp src/shell/*.o src/editor/*.o src/ui/*.o src/config/*.o -o bin/test_getopts $LDFLAGS
 $CXX $CXXFLAGS -Iinclude tests/test_stty.cpp src/shell/*.o src/editor/*.o src/ui/*.o src/config/*.o -o bin/test_stty $LDFLAGS
+$CXX $CXXFLAGS -Iinclude tests/test_config.cpp src/shell/*.o src/editor/*.o src/ui/*.o src/config/*.o src/plugin/*.o -o bin/test_config $LDFLAGS
 
 echo "2. Running Unit Tests..."
 ./bin/test_lexer
@@ -37,6 +41,7 @@ echo "2. Running Unit Tests..."
 ./bin/test_cd_hash_umask
 ./bin/test_getopts
 ./bin/test_stty
+./bin/test_config
 
 echo ""
 echo "3. Running POSIX Compatibility Script Suite..."
@@ -335,6 +340,166 @@ if [ "$STATUS" -eq 0 ]; then
 fi
 echo "$OUT" | grep -q "invalid argument" || { echo "[FAIL] stty invalid operand: $OUT"; exit 1; }
 echo "[PASS] stty builtin (no-tty failure, help, invalid operand)"
+
+echo ""
+echo "8. Running Customization Hub Tests (config / theme / doctor / reload)..."
+
+CFGHOME=$(mktemp -d)
+mkdir -p "$CFGHOME/.config/aswell"
+run_cfg() { HOME="$CFGHOME" ./bin/aswell -c "$1" | strip_ansi; }
+# Same as run_cfg but preserves the shell's exit status for negative tests.
+run_cfg_status() {
+    HOME="$CFGHOME" ./bin/aswell -c "$1" > /tmp/aswell_cfg_out.txt 2>&1
+    local rc=$?
+    strip_ansi < /tmp/aswell_cfg_out.txt
+    return $rc
+}
+CFG_FILE="$CFGHOME/.config/aswell/config.txt"
+fail_cfg() { echo "[FAIL] $1"; exit 1; }
+
+# --- settings hub: set persists, get reads back, alias + toggle + validation
+OUT=$(run_cfg 'aswell config set show_git false')
+echo "$OUT" | grep -q "show_git = false" || fail_cfg "config set output: $OUT"
+grep -q '^show_git=false$' "$CFG_FILE" || fail_cfg "config set did not persist"
+[ "$(run_cfg 'aswell config get show_git')" = "false" ] || fail_cfg "config get mismatch"
+
+# CLI form (before the shell starts) behaves identically
+[ "$(HOME="$CFGHOME" ./bin/aswell config get show_git)" = "false" ] || fail_cfg "CLI config get mismatch"
+
+# toggling flips a boolean
+run_cfg 'aswell config toggle show_git' >/dev/null
+[ "$(run_cfg 'aswell config get show_git')" = "true" ] || fail_cfg "config toggle failed"
+
+# aliases are accepted and stored under their canonical name
+run_cfg 'aswell config set vim true' >/dev/null
+grep -q '^vi_mode=true$' "$CFG_FILE" || fail_cfg "alias 'vim' did not canonicalise to vi_mode"
+
+# invalid values and unknown keys are rejected loudly
+set +e
+OUT=$(run_cfg_status 'aswell config set animation maybe'); STATUS=$?
+set -e
+[ "$STATUS" -ne 0 ] || fail_cfg "bad boolean accepted"
+echo "$OUT" | grep -q "not a boolean" || fail_cfg "missing boolean error: $OUT"
+set +e
+OUT=$(run_cfg_status 'aswell config set animtion true'); STATUS=$?
+set -e
+[ "$STATUS" -ne 0 ] || fail_cfg "unknown key accepted"
+echo "$OUT" | grep -q "did you mean 'animation'" || fail_cfg "missing did-you-mean: $OUT"
+[ "$(run_cfg 'aswell config get show_git')" = "true" ] || fail_cfg "rejected write changed the config"
+
+# hand-written config.txt keeps its comments when a value changes
+printf '# my notes\ntheme=nord\n' > "$CFG_FILE"
+run_cfg 'aswell config set show_jobs false' >/dev/null
+grep -q '# my notes' "$CFG_FILE" || fail_cfg "comments were destroyed by config set"
+grep -q '^theme=nord$' "$CFG_FILE" || fail_cfg "unrelated key was lost"
+
+# help is generated from the registry, so every setting is documented
+run_cfg 'aswell config help' | grep -q 'autosuggestions' || fail_cfg "config help missing a setting"
+run_cfg 'aswell config help show_git' | grep -q 'Show the <git> branch badge' || fail_cfg "config help <key> mismatch"
+
+# JSON view for scripting
+OUT=$(run_cfg 'aswell config list --json')
+echo "$OUT" | head -1 | grep -q '^{' || fail_cfg "config json does not start with { "
+echo "$OUT" | tail -1 | grep -q '^}' || fail_cfg "config json does not end with }"
+echo "$OUT" | grep -q '"show_jobs": {"value": false' || fail_cfg "config json missing changed value: $OUT"
+
+# export / import round-trip
+run_cfg 'aswell config export --to /tmp/aswell_exported_config.txt' >/dev/null
+grep -q '# Aswell shell configuration' /tmp/aswell_exported_config.txt || fail_cfg "export header missing"
+IMPORTHOME=$(mktemp -d)
+OUT=$(HOME="$IMPORTHOME" ./bin/aswell -c 'aswell config import /tmp/aswell_exported_config.txt' | strip_ansi)
+echo "$OUT" | grep -q 'imported' || fail_cfg "import output: $OUT"
+[ "$(HOME="$IMPORTHOME" ./bin/aswell -c 'aswell config get show_jobs' | strip_ansi)" = "false" ] || fail_cfg "imported value mismatch"
+rm -rf "$IMPORTHOME"
+
+# --- themes: switching persists (regression: in-shell `theme set` used to be a no-op)
+OUT=$(run_cfg 'aswell theme set matrix')
+echo "$OUT" | grep -q "theme = matrix" || fail_cfg "theme set output: $OUT"
+grep -q '^theme=matrix$' "$CFG_FILE" || fail_cfg "theme set did not persist"
+[ "$(run_cfg 'aswell config get theme')" = "matrix" ] || fail_cfg "theme not readable via config get"
+
+run_cfg 'aswell theme set nord' >/dev/null
+grep -q '^theme=nord$' "$CFG_FILE" || fail_cfg "bare 'aswell theme <name>' shortcut failed"
+run_cfg 'aswell theme reset' >/dev/null
+grep -q '^theme=modern$' "$CFG_FILE" || fail_cfg "theme reset failed"
+
+# listing discovers built-ins *and* user stylesheets
+run_cfg 'aswell theme list' | grep -q 'matrix' || fail_cfg "theme list missing built-in"
+run_cfg 'aswell theme new mydesk --from nord' >/dev/null
+test -f "$CFGHOME/.config/aswell/themes/mydesk.css" || fail_cfg "theme new did not scaffold a stylesheet"
+run_cfg 'aswell theme list' | grep -q 'mydesk' || fail_cfg "theme list missing user theme"
+run_cfg 'aswell theme set mydesk' >/dev/null
+grep -q '^theme=mydesk$' "$CFG_FILE" || fail_cfg "custom theme not selectable"
+run_cfg 'aswell config set theme nord' >/dev/null
+
+# unknown theme names are rejected with a suggestion
+set +e
+OUT=$(run_cfg_status 'aswell theme set dracul'); STATUS=$?
+set -e
+[ "$STATUS" -ne 0 ] || fail_cfg "unknown theme accepted"
+echo "$OUT" | grep -q "did you mean 'aswell theme set dracula'" || fail_cfg "theme suggestion missing: $OUT"
+
+# previews render through the real prompt engine (TrueColor ANSI on stdout)
+COLORTERM=truecolor ./bin/aswell --config "$CFGHOME/.config/aswell" theme preview cyberpunk > /tmp/aswell_preview.txt 2>&1
+grep -q $'\033\[38;2;' /tmp/aswell_preview.txt || fail_cfg "theme preview produced no TrueColor styling"
+grep -q 'cyberpunk' /tmp/aswell_preview.txt || fail_cfg "theme preview missing theme name"
+rm -f /tmp/aswell_preview.txt
+run_cfg 'aswell theme preview --all' | grep -q 'powerline' || fail_cfg "theme preview --all incomplete"
+echo "$CFGHOME" > /tmp/aswell_cfghome_marker
+
+# --- doctor: reports problems, stays silent when clean
+CLEANHOME=$(mktemp -d)
+mkdir -p "$CLEANHOME/.config/aswell"
+printf 'theme=nord\nanimation=true\n' > "$CLEANHOME/.config/aswell/config.txt"
+set +e
+HOME="$CLEANHOME" ./bin/aswell -c 'aswell doctor' > /tmp/doctor_clean.txt 2>&1
+STATUS=$?
+set -e
+[ "$STATUS" -eq 0 ] || fail_cfg "doctor reported problems on a clean config: $(cat /tmp/doctor_clean.txt)"
+grep -q "Everything checks out" /tmp/doctor_clean.txt || fail_cfg "doctor clean summary missing"
+
+printf 'animaton=true\nshow_git=maybe\n' > "$CLEANHOME/.config/aswell/config.txt"
+set +e
+HOME="$CLEANHOME" ./bin/aswell -c 'aswell doctor --quiet' > /tmp/doctor_bad.txt 2>&1
+STATUS=$?
+set -e
+[ "$STATUS" -ne 0 ] || fail_cfg "doctor accepted a broken config"
+grep -q "animaton" /tmp/doctor_bad.txt || fail_cfg "doctor missed unknown key: $(cat /tmp/doctor_bad.txt)"
+grep -q "aswell config set show_git" /tmp/doctor_bad.txt || fail_cfg "doctor missing pasteable fix: $(cat /tmp/doctor_bad.txt)"
+
+# broken prompt templates are caught before they blank the prompt
+printf '<prompt class="main">\n  <usr />\n' > "$CLEANHOME/.config/aswell/prompt.html"
+set +e
+HOME="$CLEANHOME" ./bin/aswell -c 'aswell doctor' > /tmp/doctor_html.txt 2>&1
+STATUS=$?
+set -e
+[ "$STATUS" -ne 0 ] || fail_cfg "doctor accepted an unclosed prompt.html"
+grep -q "never closed" /tmp/doctor_html.txt || fail_cfg "doctor missing unclosed-tag hint: $(cat /tmp/doctor_html.txt)"
+grep -q "unknown element <usr>" /tmp/doctor_html.txt || fail_cfg "doctor missing unknown tag hint: $(cat /tmp/doctor_html.txt)"
+
+# bad CSS properties are named with the file and line
+printf 'user { colr: #ff0000; }\ndirectory { color: #00ff00; }\n' > "$CLEANHOME/.config/aswell/theme.css"
+HOME="$CLEANHOME" ./bin/aswell -c 'aswell doctor' > /tmp/doctor_css.txt 2>&1 || true
+grep -q "colr" /tmp/doctor_css.txt || fail_cfg "doctor missed unknown CSS property: $(cat /tmp/doctor_css.txt)"
+rm -rf "$CLEANHOME"
+
+# --- reload + config dir plumbing
+OUT=$(run_cfg 'aswell reload')
+echo "$OUT" | grep -q "no live prompt" || fail_cfg "reload outside a session should say so: $OUT"
+[ "$(./bin/aswell --config /tmp/aswell_alt_config config path | strip_ansi)" = "/tmp/aswell_alt_config" ] || fail_cfg "--config PATH not honoured"
+mkdir -p /tmp/aswell_alt_config && HOME="$CFGHOME" ./bin/aswell --config /tmp/aswell_alt_config -c 'aswell config set theme nord' >/dev/null
+grep -q '^theme=nord$' /tmp/aswell_alt_config/config.txt || fail_cfg "--config PATH not used for writes"
+rm -rf /tmp/aswell_alt_config
+
+# --- env override for one-off theme experiments
+# ASWELL_THEME overrides the rendered theme for one session without touching the file
+run_cfg 'aswell config set theme nord' >/dev/null
+ASWELL_THEME=minimal HOME="$CFGHOME" ./bin/aswell theme list | strip_ansi | grep -q $'\xe2\x9c\x93 minimal' || fail_cfg "ASWELL_THEME override not reflected in theme list"
+[ "$(run_cfg 'aswell config get theme')" = "nord" ] || fail_cfg "ASWELL_THEME leaked into the stored setting"
+
+rm -f /tmp/aswell_cfghome_marker /tmp/aswell_exported_config.txt
+rm -rf "$CFGHOME"
+echo "[PASS] customization hub (config, theme, doctor, reload)"
 
 echo ""
 echo "=================================================="

@@ -1,5 +1,7 @@
 #include <cassert>
 #include <iostream>
+#include <string>
+#include <vector>
 #include "aswell/editor/history.hpp"
 
 using namespace aswell;
@@ -100,10 +102,51 @@ void test_history_expansion() {
     std::cout << "[PASS] test_history_expansion\n";
 }
 
+// History policy knobs driven by ~/.config/aswell/config.txt
+void test_history_policy() {
+    History hist("/tmp/test_aswell_hist_policy.txt");
+    hist.clear();
+
+    // Consecutive duplicates are always collapsed.
+    hist.add("ls -la");
+    hist.add("ls -la");
+    hist.add("pwd");
+    assert(hist.size() == 2);
+
+    // Non-consecutive duplicates stay unless history_ignore_dups is on.
+    hist.add("ls -la");
+    assert(hist.size() == 3);
+    assert(hist.get(0) == "ls -la");
+    assert(hist.get(2) == "ls -la");
+
+    hist.set_ignore_dups(true);
+    hist.add("pwd"); // older "pwd" is dropped, newest entry wins
+    assert(hist.size() == 3);
+    assert(hist.get(hist.size() - 1) == "pwd");
+    std::vector<std::string> matches = hist.search("pwd");
+    assert(matches.size() == 1);
+
+    // history_size caps the log and evicts the oldest entries first.
+    hist.set_max_entries(4);
+    assert(hist.max_entries() == 4);
+    assert(hist.size() <= 4);
+    for (int i = 0; i < 20; ++i) {
+        hist.add("cmd_" + std::to_string(i));
+    }
+    assert(hist.size() == 4);
+    assert(hist.get(3) == "cmd_19");
+    hist.set_max_entries(0); // ignored: never disable history entirely
+    assert(hist.max_entries() == 4);
+
+    hist.clear();
+    std::cout << "[PASS] test_history_policy\n";
+}
+
 int main() {
     std::cout << "--- Running History Tests ---\n";
     test_history_basic();
     test_history_expansion();
+    test_history_policy();
     std::cout << "All History Tests Passed!\n";
     return 0;
 }
