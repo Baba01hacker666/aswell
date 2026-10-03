@@ -11,7 +11,8 @@ bool Builtins::is_builtin(const std::string& name) {
         "type", "wait", "jobs", "fg", "bg", "kill", "hash",
         "umask", "local", "break", "continue", "return",
         "true", "false", ":", "help", "history", "aswell", "color",
-        "dirs", "pushd", "popd", "command", "getopts", "stty"
+        "dirs", "pushd", "popd", "command", "getopts", "stty",
+        "parallel", "retry", "timeout"
     };
     return builtins.find(name) != builtins.end();
 }
@@ -40,6 +41,9 @@ int Builtins::execute(const std::string& name,
     if (name == "unalias") return builtin_unalias(args, env);
     if (name == "getopts") return builtin_getopts(args, env);
     if (name == "stty") return builtin_stty(args, env);
+    if (name == "parallel") return builtin_parallel(args, env, executor);
+    if (name == "retry") return builtin_retry(args, env, executor);
+    if (name == "timeout") return builtin_timeout(args, env, executor);
     if (name == "eval") return builtin_eval(args, env, executor);
     if (name == "exec") return builtin_exec(args, env);
     if (name == "read") return builtin_read(args, env);
@@ -51,7 +55,7 @@ int Builtins::execute(const std::string& name,
     if (name == "jobs") return builtin_jobs(args, jobs);
     if (name == "fg") return builtin_fg(args, jobs);
     if (name == "bg") return builtin_bg(args, jobs);
-    if (name == "kill") return builtin_kill(args, env);
+    if (name == "kill") return builtin_kill(args, env, jobs);
     if (name == "hash") return builtin_hash(args, env);
     if (name == "umask") return builtin_umask(args, env);
     if (name == "local") return builtin_local(args, env);

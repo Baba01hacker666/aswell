@@ -54,7 +54,7 @@ private:
     static int builtin_jobs(const std::vector<std::string>& args, JobManager& jobs);
     static int builtin_fg(const std::vector<std::string>& args, JobManager& jobs);
     static int builtin_bg(const std::vector<std::string>& args, JobManager& jobs);
-    static int builtin_kill(const std::vector<std::string>& args, Environment& env);
+    static int builtin_kill(const std::vector<std::string>& args, Environment& env, JobManager& jobs);
     static int builtin_hash(const std::vector<std::string>& args, Environment& env);
     static int builtin_umask(const std::vector<std::string>& args, Environment& env);
     static int builtin_local(const std::vector<std::string>& args, Environment& env);
@@ -64,6 +64,9 @@ private:
     static int builtin_help(const std::vector<std::string>& args);
     static int builtin_history(const std::vector<std::string>& args);
     static int builtin_aswell(const std::vector<std::string>& args, Environment& env, Executor& executor);
+    static int builtin_parallel(const std::vector<std::string>& args, Environment& env, Executor& executor);
+    static int builtin_retry(const std::vector<std::string>& args, Environment& env, Executor& executor);
+    static int builtin_timeout(const std::vector<std::string>& args, Environment& env, Executor& executor);
     static int builtin_dirs(const std::vector<std::string>& args, Environment& env);
     static int builtin_pushd(const std::vector<std::string>& args, Environment& env);
     static int builtin_popd(const std::vector<std::string>& args, Environment& env);
