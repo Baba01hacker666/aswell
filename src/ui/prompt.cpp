@@ -100,7 +100,27 @@ symbol.error {
 }
 
 void PromptEngine::set_theme_css(std::string_view css) {
-    stylesheet_ = CSSParser::parse(css);
+    theme_css_ = std::string(css);
+    apply_theme_css();
+}
+
+// Re-parses the stored stylesheet, honouring the `animation` config switch:
+// when animations are disabled every rule is imported with its animation
+// stripped, so no per-frame redraw of the prompt is ever triggered.
+void PromptEngine::apply_theme_css() {
+    StyleSheet parsed = CSSParser::parse(theme_css_);
+    if (animations_enabled_) {
+        stylesheet_ = std::move(parsed);
+    } else {
+        StyleSheet filtered;
+        for (auto rule : parsed.rules()) {
+            rule.style.animation.type = AnimationType::NONE;
+            rule.style.animation.duration_ms = 0;
+            filtered.add_rule(rule);
+        }
+        stylesheet_ = std::move(filtered);
+    }
+
     has_animations_ = false;
     for (const auto& rule : stylesheet_.rules()) {
         if (rule.style.animation.type != AnimationType::NONE) {
@@ -108,6 +128,21 @@ void PromptEngine::set_theme_css(std::string_view css) {
             break;
         }
     }
+}
+
+void PromptEngine::set_animations_enabled(bool enabled) {
+    if (animations_enabled_ == enabled) return;
+    animations_enabled_ = enabled;
+    apply_theme_css();
+}
+
+const std::vector<std::string>& PromptEngine::known_tags() {
+    static const std::vector<std::string> kTags = {
+        "prompt", "rprompt", "statusbar", "segment", "text", "newline", "br",
+        "user", "hostname", "directory", "cwd", "git", "runtime", "status",
+        "jobs", "mode", "symbol", "time", "date",
+    };
+    return kTags;
 }
 
 void PromptEngine::set_template_html(std::string_view html) {
@@ -167,6 +202,68 @@ std::string PromptEngine::get_shortened_path(const std::string& path) {
     return res;
 }
 
+// Formats a broken-down time with a small, explicit subset of strftime
+// specifiers. Implemented by hand instead of calling strftime(): the format
+// comes from user config, so a bounded, warning-free and locale-stable
+// formatter is the safer primitive here. Unknown sequences pass through
+// verbatim, and an empty format falls back to the documented default.
+static std::string pad2(int value) {
+    std::string out = std::to_string(value);
+    if (out.size() < 2) out = std::string(2 - out.size(), '0') + out;
+    return out;
+}
+
+static std::string format_time(const std::tm* tm_info, const std::string& fmt_in, const char* fallback) {
+    static const char* kDays[] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
+    static const char* kMonths[] = {"January", "February", "March", "April", "May", "June", "July",
+                                    "August", "September", "October", "November", "December"};
+    if (!tm_info) return "";
+
+    std::string fmt = fmt_in.empty() ? std::string(fallback) : fmt_in;
+    std::string out;
+    out.reserve(fmt.size() + 8);
+
+    for (size_t i = 0; i < fmt.size(); ++i) {
+        if (fmt[i] != '%' || i + 1 >= fmt.size()) {
+            out += fmt[i];
+            continue;
+        }
+        const char spec = fmt[++i];
+        switch (spec) {
+            case 'H': out += pad2(tm_info->tm_hour); break;
+            case 'M': out += pad2(tm_info->tm_min); break;
+            case 'S': out += pad2(tm_info->tm_sec); break;
+            case 'I': {
+                int hour12 = tm_info->tm_hour % 12;
+                out += pad2(hour12 == 0 ? 12 : hour12);
+                break;
+            }
+            case 'p': out += (tm_info->tm_hour < 12) ? "AM" : "PM"; break;
+            case 'd': out += pad2(tm_info->tm_mday); break;
+            case 'e': out += (tm_info->tm_mday < 10 ? " " : "") + std::to_string(tm_info->tm_mday); break;
+            case 'm': out += pad2(tm_info->tm_mon + 1); break;
+            case 'Y': out += std::to_string(tm_info->tm_year + 1900); break;
+            case 'y': out += pad2((tm_info->tm_year + 1900) % 100); break;
+            case 'j': {
+                int doy = tm_info->tm_yday + 1;
+                std::string digits = std::to_string(doy);
+                out += std::string(3 - digits.size(), '0') + digits;
+                break;
+            }
+            case 'a': out += std::string(kDays[tm_info->tm_wday % 7]).substr(0, 3); break;
+            case 'A': out += kDays[tm_info->tm_wday % 7]; break;
+            case 'b': out += std::string(kMonths[tm_info->tm_mon % 12]).substr(0, 3); break;
+            case 'B': out += kMonths[tm_info->tm_mon % 12]; break;
+            case '%': out += '%'; break;
+            default:
+                out += '%';
+                out += spec;
+                break;
+        }
+    }
+    return out;
+}
+
 PromptContext PromptEngine::gather_context(double last_duration_ms, size_t active_jobs, bool vi_normal) {
     PromptContext ctx;
 
@@ -207,12 +304,11 @@ PromptContext PromptEngine::gather_context(double last_duration_ms, size_t activ
     ctx.active_jobs = active_jobs;
     ctx.vi_normal_mode = vi_normal;
 
-    // Timestamp
+    // Timestamp & date, honouring the configured strftime formats
     std::time_t now = std::time(nullptr);
     std::tm* tm_info = std::localtime(&now);
-    char tbuf[64];
-    std::strftime(tbuf, sizeof(tbuf), "%H:%M:%S", tm_info);
-    ctx.time_str = tbuf;
+    ctx.time_str = format_time(tm_info, time_format_, "%H:%M:%S");
+    ctx.date_str = format_time(tm_info, date_format_, "%Y-%m-%d");
 
     // Export standard environment variables for dynamic DOM binding
     env_.set_var("USER", ctx.user);
@@ -223,6 +319,7 @@ PromptContext PromptEngine::gather_context(double last_duration_ms, size_t activ
     env_.set_var("JOBS", std::to_string(ctx.active_jobs));
     env_.set_var("MODE", ctx.vi_normal_mode ? "NORMAL" : "INSERT");
     env_.set_var("TIME", ctx.time_str);
+    env_.set_var("DATE", ctx.date_str);
 
     return ctx;
 }
@@ -375,6 +472,10 @@ static void populate_dom_data(std::shared_ptr<UIElement> elem, const PromptConte
         }
     } else if (elem->tag == "time") {
         elem->text_content = ctx.time_str;
+    } else if (elem->tag == "date") {
+        elem->text_content = ctx.date_str;
+    } else if (elem->tag == "cwd") {
+        elem->text_content = ctx.cwd;
     } else {
         // Dynamic variable expansion on text content
         elem->text_content = expand_vars(elem->text_content, env);

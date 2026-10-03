@@ -20,6 +20,7 @@ struct PromptContext {
     size_t active_jobs = 0;
     bool vi_normal_mode = false;
     std::string time_str;
+    std::string date_str;
 };
 
 class PromptEngine {
@@ -28,6 +29,15 @@ public:
 
     void set_theme_css(std::string_view css);
     void set_template_html(std::string_view html);
+
+    // Configuration switches driven by ~/.config/aswell/config.txt
+    void set_animations_enabled(bool enabled);
+    void set_time_format(std::string fmt) { time_format_ = std::move(fmt); }
+    void set_date_format(std::string fmt) { date_format_ = std::move(fmt); }
+
+    // Tags the DOM engine resolves. Used by `aswell doctor` to flag typos in
+    // prompt.html and by Tab completion inside <prompt> templates.
+    static const std::vector<std::string>& known_tags();
     void set_custom_user(const std::string& user) { custom_user_ = user; }
     void set_custom_hostname(const std::string& host) { custom_hostname_ = host; }
     const std::string& custom_user() const { return custom_user_; }
@@ -43,9 +53,15 @@ private:
     std::string get_git_info(bool& out_dirty);
     std::string get_shortened_path(const std::string& path);
 
+    void apply_theme_css();
+
     Environment& env_;
     StyleSheet stylesheet_;
+    std::string theme_css_;
     std::string template_html_;
+    std::string time_format_ = "%H:%M:%S";
+    std::string date_format_ = "%Y-%m-%d";
+    bool animations_enabled_ = true;
     std::string custom_user_;
     std::string custom_hostname_;
     bool has_animations_ = false;

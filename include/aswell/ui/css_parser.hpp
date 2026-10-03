@@ -42,6 +42,12 @@ class CSSParser {
 public:
     static StyleSheet parse(std::string_view css_text);
 
+    // Properties the renderer understands. `aswell doctor` validates custom
+    // stylesheets against this list so typos such as `colr: red` are reported
+    // instead of being silently dropped.
+    static const std::vector<std::string>& supported_properties();
+    static bool is_supported_property(std::string_view prop);
+
 private:
     static void parse_declaration(Style& style, std::string_view prop, std::string_view val);
     static BoxSpacing parse_box_spacing(std::string_view val);

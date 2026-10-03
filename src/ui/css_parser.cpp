@@ -136,6 +136,24 @@ AnimationConfig CSSParser::parse_animation(std::string_view val) {
     return cfg;
 }
 
+const std::vector<std::string>& CSSParser::supported_properties() {
+    static const std::vector<std::string> kProperties = {
+        "color", "background", "background-color", "font-weight", "font-style",
+        "text-decoration", "display", "padding", "padding-left", "padding-right",
+        "padding-top", "padding-bottom", "margin", "margin-left", "margin-right",
+        "border", "border-radius", "border-color", "content", "animation",
+    };
+    return kProperties;
+}
+
+bool CSSParser::is_supported_property(std::string_view prop) {
+    std::string wanted = str_util::to_lower(str_util::trim(prop));
+    for (const auto& p : supported_properties()) {
+        if (p == wanted) return true;
+    }
+    return false;
+}
+
 void CSSParser::parse_declaration(Style& style, std::string_view prop, std::string_view val) {
     prop = str_util::trim_sv(prop);
     val = str_util::trim_sv(val);
