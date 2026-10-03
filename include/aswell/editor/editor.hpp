@@ -19,6 +19,10 @@ public:
 
     History& history() { return history_; }
     void set_vi_mode(bool vi) { vi_mode_ = vi; }
+    void set_autosuggestions(bool enable) { autosuggestions_enabled_ = enable; }
+    void set_syntax_highlighting(bool enable) { syntax_highlighting_enabled_ = enable; }
+    bool autosuggestions_enabled() const { return autosuggestions_enabled_; }
+    bool syntax_highlighting_enabled() const { return syntax_highlighting_enabled_; }
     void set_command_animation(bool enable) { command_anim_enabled_ = enable; }
     bool is_command_animation_enabled() const { return command_anim_enabled_; }
 
@@ -30,6 +34,9 @@ private:
                               size_t token_start);
 
     bool is_command_complete(const std::string& text) const;
+
+    // Ghost-text suffix for the current buffer ("" when autosuggestions are off).
+    std::string suggestion_suffix() const;
     std::string render_animated_command(const std::string& buffer, uint64_t timestamp_ms) const;
 
     Environment& env_;
@@ -45,6 +52,8 @@ private:
 
     bool vi_mode_ = false;
     bool vi_insert_mode_ = true;
+    bool autosuggestions_enabled_ = true;
+    bool syntax_highlighting_enabled_ = true;
 
     int history_index_ = -1;
     std::string saved_current_buffer_;

@@ -1,5 +1,8 @@
 #include "aswell/editor/completion.hpp"
 #include "aswell/shell/builtins.hpp"
+#include "aswell/config/settings.hpp"
+#include "aswell/config/theme.hpp"
+#include "aswell/config/config.hpp"
 #include <chrono>
 #include <dirent.h>
 #include <sys/stat.h>
@@ -502,20 +505,66 @@ std::vector<CompletionCandidate> CompletionEngine::complete(const std::string& b
             auto g = complete_git_args(args, match_word);
             if (!g.empty()) return g;
         }
-        if (eff == "aswell" && arg_index == 1) {
+        if (eff == "aswell") {
+            // Context-aware completion for the customization hub: subcommands,
+            // then setting names, then the allowed values of that setting. The
+            // candidates come from SettingsRegistry, so anything documented is
+            // completable without touching this file.
             static const std::vector<std::string> kSubs = {
-                "config", "theme", "custom", "color", "template", "hooks", "ui", "event",
-                "bash", "help", "version",
+                "config", "theme", "color", "custom", "template", "hooks", "ui",
+                "event", "bash", "doctor", "reload", "help", "version",
             };
-            std::vector<std::pair<int, CompletionCandidate>> scored;
-            for (const auto& s : kSubs) {
-                int sc = match_score(match_word, s);
-                if (sc >= 100 && !match_word.empty()) continue;
-                scored.emplace_back(rank_key(sc), CompletionCandidate{s, s, "subcommand", false});
+
+            std::vector<std::string> candidates;
+            std::string kind = "subcommand";
+            if (arg_index == 1) {
+                candidates = kSubs;
+            } else if (args.size() >= 2 && args[1] == "config" && arg_index == 2) {
+                candidates = {"list", "get", "set", "toggle", "unset", "reset", "show",
+                              "export", "import", "help", "path", "edit", "theme",
+                              "username", "hostname"};
+                kind = "config command";
+            } else if (args.size() >= 3 && args[1] == "theme" && arg_index == 2) {
+                candidates = {"list", "set", "preview", "show", "new", "reset"};
+                kind = "theme command";
+            } else if (args.size() >= 3 && args[1] == "config" && args[2] == "theme" &&
+                       arg_index == 3) {
+                // Legacy spelling: `aswell config theme <name>`.
+                candidates = ThemeManager::theme_names(ConfigManager::get_config_dir());
+                kind = "theme";
+            } else if (args.size() >= 3 && args[1] == "config" && arg_index == 3 &&
+                       (args[2] == "get" || args[2] == "toggle" || args[2] == "unset" ||
+                        args[2] == "help" || args[2] == "set")) {
+                for (const auto& def : SettingsRegistry::all()) candidates.push_back(def.key);
+                kind = "setting";
+            } else if (args.size() >= 3 && args[1] == "config" && arg_index == 4 && args[2] == "set") {
+                const SettingDef* def = SettingsRegistry::find(args[3]);
+                if (def) {
+                    if (def->type == SettingType::BOOL) {
+                        candidates = {"true", "false"};
+                    } else {
+                        candidates = SettingsRegistry::choices(*def);
+                    }
+                    kind = "value";
+                }
+            } else if (args.size() >= 3 && args[1] == "theme" && arg_index == 3 &&
+                       (args[2] == "set" || args[2] == "preview" || args[2] == "show" ||
+                        args[2] == "new")) {
+                candidates = ThemeManager::theme_names(ConfigManager::get_config_dir());
+                kind = "theme";
             }
-            std::vector<CompletionCandidate> out;
-            rank_and_truncate(scored, out, match_word, 20);
-            if (!out.empty()) return out;
+
+            if (!candidates.empty()) {
+                std::vector<std::pair<int, CompletionCandidate>> scored;
+                for (const auto& c : candidates) {
+                    int sc = match_score(match_word, c);
+                    if (sc >= 100 && !match_word.empty()) continue;
+                    scored.emplace_back(rank_key(sc), CompletionCandidate{c, c, kind, false});
+                }
+                std::vector<CompletionCandidate> out;
+                rank_and_truncate(scored, out, match_word, 30);
+                if (!out.empty()) return out;
+            }
         }
     }
 

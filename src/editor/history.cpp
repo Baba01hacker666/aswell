@@ -19,11 +19,30 @@ void History::add(const std::string& line) {
     if (trimmed.empty()) return;
     if (!entries_.empty() && entries_.back() == trimmed) return; // Deduplicate consecutive
 
+    if (ignore_dups_) {
+        // bash "histcontrol=ignoredups" semantics: the newest occurrence wins,
+        // so drop the older duplicate and append the fresh one at the end.
+        for (size_t i = 0; i + 1 < entries_.size(); ++i) {
+            if (entries_[i] == trimmed) {
+                entries_.erase(entries_.begin() + static_cast<long>(i));
+                break;
+            }
+        }
+    }
+
     entries_.push_back(trimmed);
     if (entries_.size() > max_entries_) {
         entries_.erase(entries_.begin());
     }
     save();
+}
+
+void History::set_max_entries(size_t max_entries) {
+    if (max_entries == 0) return;
+    max_entries_ = max_entries;
+    while (entries_.size() > max_entries_) {
+        entries_.erase(entries_.begin());
+    }
 }
 
 void History::pop_last() {

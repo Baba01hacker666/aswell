@@ -110,14 +110,16 @@ void LineEditor::refresh_line(const std::string& prompt_ansi, int prompt_visual_
     if (command_anim_enabled_) {
         std::string anim_cmd = render_animated_command(buffer_, timestamp_ms);
         std::cout << anim_cmd;
-    } else {
+    } else if (syntax_highlighting_enabled_) {
         // Syntax highlighted buffer
         std::string hl = highlighter_.highlight(buffer_);
         std::cout << hl;
+    } else {
+        std::cout << buffer_;
     }
 
     // Autosuggestion in muted gray if at the end of the buffer
-    std::string sugg_suffix = suggestions_.get_suggestion_suffix(buffer_);
+    std::string sugg_suffix = suggestion_suffix();
     if (!sugg_suffix.empty() && cursor_pos_ == buffer_.size()) {
         std::cout << "\033[90m" << sugg_suffix << "\033[0m";
     }
@@ -308,6 +310,11 @@ void LineEditor::show_completion_menu(const std::vector<CompletionCandidate>& ca
     std::cout.flush();
 }
 
+std::string LineEditor::suggestion_suffix() const {
+    if (!autosuggestions_enabled_) return "";
+    return suggestions_.get_suggestion_suffix(buffer_);
+}
+
 std::optional<std::string> LineEditor::read_line(double last_duration_ms, size_t active_jobs) {
     RawModeGuard raw_guard;
 
@@ -450,7 +457,7 @@ std::optional<std::string> LineEditor::read_line(double last_duration_ms, size_t
                 break;
 
             case Key::RIGHT: {
-                std::string sugg = suggestions_.get_suggestion_suffix(buffer_);
+                std::string sugg = suggestion_suffix();
                 if (cursor_pos_ == buffer_.size() && !sugg.empty()) {
                     // Accept autosuggestion!
                     buffer_ += sugg;
@@ -468,7 +475,7 @@ std::optional<std::string> LineEditor::read_line(double last_duration_ms, size_t
 
             case Key::END:
             case Key::CTRL_E: {
-                std::string sugg = suggestions_.get_suggestion_suffix(buffer_);
+                std::string sugg = suggestion_suffix();
                 if (cursor_pos_ == buffer_.size() && !sugg.empty()) {
                     buffer_ += sugg;
                 }
@@ -571,7 +578,7 @@ std::optional<std::string> LineEditor::read_line(double last_duration_ms, size_t
 
             case Key::ALT_F: {
                 // Accept next word from autosuggestion or move word forward
-                std::string sugg = suggestions_.get_suggestion_suffix(buffer_);
+                std::string sugg = suggestion_suffix();
                 if (!sugg.empty() && cursor_pos_ == buffer_.size()) {
                     size_t space = sugg.find(' ');
                     std::string word = (space == std::string::npos) ? sugg : sugg.substr(0, space + 1);

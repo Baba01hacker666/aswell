@@ -27,10 +27,18 @@ public:
     void save();
     void load();
 
+    // Policy knobs, driven by ~/.config/aswell/config.txt (history_size,
+    // history_ignore_dups) so behaviour is configurable without recompiling.
+    void set_max_entries(size_t max_entries);
+    size_t max_entries() const { return max_entries_; }
+    void set_ignore_dups(bool ignore) { ignore_dups_ = ignore; }
+    bool ignore_dups() const { return ignore_dups_; }
+
 private:
     std::string history_file_;
     std::vector<std::string> entries_;
     size_t max_entries_ = 10000;
+    bool ignore_dups_ = false;
 };
 
 } // namespace aswell

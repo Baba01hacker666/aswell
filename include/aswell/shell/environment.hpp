@@ -63,6 +63,12 @@ public:
     bool opt_no_theme = false;
     bool opt_safe_mode = false;
 
+    // Installed by the interactive loop. It re-reads config.txt, the active
+    // theme stylesheet and prompt.html, then re-applies everything to the live
+    // prompt and line editor (`announce` prints a confirmation line). Settings
+    // builtins call it so changes take effect without restarting the shell.
+    std::function<void(bool announce)> config_reload;
+
     std::string get_options_flags() const;
 
     // Aliases
