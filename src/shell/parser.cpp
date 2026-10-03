@@ -223,6 +223,30 @@ std::shared_ptr<PipelineNode> Parser::parse_pipeline() {
     return pipeline;
 }
 
+namespace {
+bool is_keyword_token(TokenType type) {
+    switch (type) {
+        case TokenType::KEYWORD_IF:
+        case TokenType::KEYWORD_THEN:
+        case TokenType::KEYWORD_ELSE:
+        case TokenType::KEYWORD_ELIF:
+        case TokenType::KEYWORD_FI:
+        case TokenType::KEYWORD_DO:
+        case TokenType::KEYWORD_DONE:
+        case TokenType::KEYWORD_CASE:
+        case TokenType::KEYWORD_ESAC:
+        case TokenType::KEYWORD_WHILE:
+        case TokenType::KEYWORD_UNTIL:
+        case TokenType::KEYWORD_FOR:
+        case TokenType::KEYWORD_IN:
+        case TokenType::KEYWORD_FUNCTION:
+            return true;
+        default:
+            return false;
+    }
+}
+} // namespace
+
 std::shared_ptr<CommandNode> Parser::parse_command() {
     if (check(TokenType::KEYWORD_IF)) {
         return parse_if();
@@ -287,28 +311,11 @@ std::shared_ptr<CommandNode> Parser::parse_command() {
                     cmd->words.push_back(saved_w.value);
                 }
 
-                // Continue reading simple command
+                // Continue reading the command — same loop as any other simple
+                // command, so both paths agree on quoting, assignments and
+                // reserved words used as arguments.
                 bool parsing_prefix_assignments = cmd->words.empty();
-                while (!check(TokenType::TOKEN_EOF)) {
-                    if (is_redirection_token(peek().type)) {
-                        if (!parse_redirection(cmd->redirections)) return nullptr;
-                        continue;
-                    }
-                    if (check(TokenType::TOKEN_WORD)) {
-                        Token tok = advance();
-                        if (parsing_prefix_assignments) {
-                            size_t eq = tok.value.find('=');
-                            if (eq != std::string::npos && eq > 0 && is_valid_name(tok.value.substr(0, eq))) {
-                                cmd->assignments.emplace_back(tok.value.substr(0, eq), tok.value.substr(eq + 1));
-                                continue;
-                            }
-                        }
-                        parsing_prefix_assignments = false;
-                        cmd->words.push_back(tok.value);
-                        continue;
-                    }
-                    break;
-                }
+                collect_simple_command_words(*cmd, parsing_prefix_assignments);
                 lexer_.process_heredocs(cmd->redirections);
                 return cmd;
             }
@@ -318,40 +325,50 @@ std::shared_ptr<CommandNode> Parser::parse_command() {
     return parse_simple_command();
 }
 
-std::shared_ptr<SimpleCommandNode> Parser::parse_simple_command() {
-    auto cmd = std::make_shared<SimpleCommandNode>();
-    bool parsing_prefix_assignments = true;
 
+// Reads the rest of a simple command: words, prefix assignments and redirections.
+//
+// POSIX: reserved words are only reserved at the *start* of a command. Once a
+// command name has been seen, `done`/`fi`/`then`/… are ordinary arguments, so
+// `echo done` prints "done" instead of silently truncating the input.
+void Parser::collect_simple_command_words(SimpleCommandNode& cmd, bool& parsing_prefix_assignments) {
     while (!check(TokenType::TOKEN_EOF)) {
         if (is_redirection_token(peek().type)) {
-            if (!parse_redirection(cmd->redirections)) {
-                return nullptr;
-            }
+            if (!parse_redirection(cmd.redirections)) return;
             continue;
         }
-
+        // `esac` is deliberately not absorbed: a case arm that swallows it would
+        // turn "missing ;;" into a silently accepted, wrong parse.
+        if (!cmd.words.empty() && is_keyword_token(peek().type) &&
+            !check(TokenType::KEYWORD_ESAC)) {
+            cmd.words.push_back(advance().value);
+            continue;
+        }
         if (check(TokenType::TOKEN_WORD)) {
             Token tok = advance();
-
             if (parsing_prefix_assignments) {
                 size_t eq_pos = tok.value.find('=');
                 if (eq_pos != std::string::npos && eq_pos > 0) {
                     std::string var_name = tok.value.substr(0, eq_pos);
                     if (is_valid_name(var_name)) {
                         std::string var_val = tok.value.substr(eq_pos + 1);
-                        cmd->assignments.emplace_back(var_name, var_val);
+                        cmd.assignments.emplace_back(var_name, var_val);
                         continue;
                     }
                 }
             }
-
             parsing_prefix_assignments = false;
-            cmd->words.push_back(tok.value);
+            cmd.words.push_back(tok.value);
             continue;
         }
-
         break;
     }
+}
+
+std::shared_ptr<SimpleCommandNode> Parser::parse_simple_command() {
+    auto cmd = std::make_shared<SimpleCommandNode>();
+    bool parsing_prefix_assignments = true;
+    collect_simple_command_words(*cmd, parsing_prefix_assignments);
 
     if (cmd->words.empty() && cmd->assignments.empty() && cmd->redirections.empty()) {
         return nullptr;
@@ -506,8 +523,15 @@ std::shared_ptr<WhileNode> Parser::parse_while(bool is_until) {
 }
 
 std::shared_ptr<CaseNode> Parser::parse_case() {
+    // `case` switches on strings, so its subject and its patterns are words even
+    // when they spell a reserved word (`case done in`, `in) …`) — as in bash.
+    // `esac` stays reserved so an unterminated case still reports an error.
+    auto word_like = [&](TokenType t) {
+        return t == TokenType::TOKEN_WORD || (is_keyword_token(t) && t != TokenType::KEYWORD_ESAC);
+    };
+
     advance(); // consume 'case'
-    if (!check(TokenType::TOKEN_WORD)) {
+    if (!word_like(peek().type)) {
         set_error("expected word after 'case'");
         return nullptr;
     }
@@ -529,7 +553,7 @@ std::shared_ptr<CaseNode> Parser::parse_case() {
         match(TokenType::TOKEN_LPAREN);
 
         CaseItem item;
-        while (check(TokenType::TOKEN_WORD)) {
+        while (word_like(peek().type)) {
             item.patterns.push_back(advance().value);
             if (match(TokenType::TOKEN_PIPE)) {
                 continue;

@@ -28,6 +28,8 @@ private:
     std::shared_ptr<PipelineNode> parse_pipeline();
     std::shared_ptr<CommandNode> parse_command();
     std::shared_ptr<SimpleCommandNode> parse_simple_command();
+    // Shared tail of simple-command parsing (words, assignments, redirections).
+    void collect_simple_command_words(SimpleCommandNode& cmd, bool& parsing_prefix_assignments);
     std::shared_ptr<SubshellNode> parse_subshell();
     std::shared_ptr<GroupingNode> parse_grouping();
     std::shared_ptr<IfNode> parse_if();
