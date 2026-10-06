@@ -693,6 +693,95 @@ rm -f /tmp/aswell_local_scope.sh /tmp/aswell_prefix_assign.sh
 rm -rf "$ALPHOME"
 echo "[PASS] parallel execution, retry, timeout, job specs and the curated alias library"
 
+# ---------------------------------------------------------------------------
+# 10. Low-footprint (anon) profile
+# ---------------------------------------------------------------------------
+echo ""
+echo "10. Running Low-Footprint (Anon) Profile Tests..."
+
+ANONHOME=$(mktemp -d)
+mkdir -p "$ANONHOME/.config/aswell"
+
+# The profile is reachable three ways and must behave identically.
+[ "$(HOME=$ANONHOME ASWELL_CONFIG_DIR=$ANONHOME/.config/aswell ./bin/aswell --anon -c 'echo anon-flag' | strip_ansi)" = "anon-flag" ] \
+    || fail_par "anon: --anon flag did not run the command"
+[ "$(HOME=$ANONHOME ASWELL_CONFIG_DIR=$ANONHOME/.config/aswell ASWELL_ANON=1 ./bin/aswell -c 'echo anon-env' | strip_ansi)" = "anon-env" ] \
+    || fail_par "anon: ASWELL_ANON=1 did not run the command"
+printf 'anon_mode=true\n' > "$ANONHOME/.config/aswell/config.txt"
+[ "$(HOME=$ANONHOME ASWELL_CONFIG_DIR=$ANONHOME/.config/aswell ./bin/aswell -c 'echo anon-setting' | strip_ansi)" = "anon-setting" ] \
+    || fail_par "anon: anon_mode=true in config.txt did not run the command"
+
+# Clear it again: the process-count comparison below needs a normal baseline.
+rm -f "$ANONHOME/.config/aswell/config.txt"
+
+# Nothing is written to disk.
+rm -f "$ANONHOME/.aswell_history"
+HOME=$ANONHOME ASWELL_CONFIG_DIR=$ANONHOME/.config/aswell ./bin/aswell --anon -c 'echo quiet' > /dev/null
+[ ! -f "$ANONHOME/.aswell_history" ] || fail_par "anon: wrote a history file"
+
+# config.txt is read-only, and says so instead of reporting a plain save.
+printf 'anon_mode=true\n' > "$ANONHOME/.config/aswell/config.txt"
+cp "$ANONHOME/.config/aswell/config.txt" "$ANONHOME/config.txt.bak"
+OUT=$(HOME=$ANONHOME ASWELL_CONFIG_DIR=$ANONHOME/.config/aswell ./bin/aswell --anon config set show_git false 2>&1 | strip_ansi)
+case "$OUT" in
+    *"read-only"*) : ;;
+    *) fail_par "anon: config set was not refused with a clear reason: $OUT" ;;
+esac
+cmp -s "$ANONHOME/config.txt.bak" "$ANONHOME/.config/aswell/config.txt" \
+    || fail_par "anon: config.txt was modified despite read-only mode"
+
+# Outside the profile the same command still saves.
+HOME=$ANONHOME ASWELL_CONFIG_DIR=$ANONHOME/.config/aswell ./bin/aswell config set show_git false > /dev/null 2>&1
+grep -q '^show_git=false' "$ANONHOME/.config/aswell/config.txt" \
+    || fail_par "anon: normal config set stopped working"
+
+# A single external command costs one process instead of two: the shell replaces
+# itself rather than forking, so no `aswell` process survives alongside the command.
+# Deterministic, no pgrep and no sleeps: have the command walk its own ancestry
+# and count how many processes are called "aswell". Normally there is one (the
+# shell that forked it); under --anon the shell replaced itself, so there is none.
+# Baseline again: the read-only test above left anon_mode=true in config.txt.
+rm -f "$ANONHOME/.config/aswell/config.txt"
+
+cat > /tmp/aswell_ancestors.sh <<'ANCESTOR_EOF'
+#!/bin/sh
+# Count how many processes in our ancestry are called "aswell".
+p=$$
+while [ "$p" -gt 1 ]; do
+    [ "$(cat /proc/$p/comm 2>/dev/null)" = "aswell" ] && echo hit
+    p=$(cut -d" " -f4 /proc/$p/stat 2>/dev/null)
+    [ -z "$p" ] && break
+done
+ANCESTOR_EOF
+chmod +x /tmp/aswell_ancestors.sh
+A=$(HOME=$ANONHOME ASWELL_CONFIG_DIR=$ANONHOME/.config/aswell ./bin/aswell -c /tmp/aswell_ancestors.sh | wc -l)
+B=$(HOME=$ANONHOME ASWELL_CONFIG_DIR=$ANONHOME/.config/aswell ./bin/aswell --anon -c /tmp/aswell_ancestors.sh | wc -l)
+[ "$A" = "1" ] || fail_par "anon: expected 1 shell ancestor without --anon, got $A"
+[ "$B" = "0" ] || fail_par "anon: exec shortcut did not fire ($B shell ancestors left)"
+
+# ...but anything needing a live shell must still be forked and run correctly.
+[ "$(HOME=$ANONHOME ASWELL_CONFIG_DIR=$ANONHOME/.config/aswell ./bin/aswell --anon -c 'echo a | tr a-z A-Z' | strip_ansi)" = "A" ] \
+    || fail_par "anon: pipeline under --anon"
+[ "$(HOME=$ANONHOME ASWELL_CONFIG_DIR=$ANONHOME/.config/aswell ./bin/aswell --anon -c 'cd /tmp && pwd' | strip_ansi)" = "/tmp" ] \
+    || fail_par "anon: builtin under --anon"
+
+# Word expansion must still happen before exec, so quoting is honoured.
+[ "$(HOME=$ANONHOME ASWELL_CONFIG_DIR=$ANONHOME/.config/aswell ./bin/aswell --anon -c 'sh -c "exit 7"' > /dev/null 2>&1; echo $?)" = "7" ] \
+    || fail_par "anon: quoted argument was not expanded before exec"
+[ "$(HOME=$ANONHOME ASWELL_CONFIG_DIR=$ANONHOME/.config/aswell ASWELL_QUOTED=quoted-value ./bin/aswell --anon -c 'echo "$ASWELL_QUOTED"' | strip_ansi)" = "quoted-value" ] \
+    || fail_par "anon: parameter expansion under --anon"
+# Tilde and quote removal must also survive the shortcut.
+[ "$(HOME=$ANONHOME ASWELL_CONFIG_DIR=$ANONHOME/.config/aswell ./bin/aswell --anon -c "echo '$ANONHOME'" | strip_ansi)" = "$ANONHOME" ] \
+    || fail_par "anon: quote removal under --anon"
+
+# An EXIT trap needs the shell to survive, so the shortcut must not fire.
+OUT=$(HOME=$ANONHOME ASWELL_CONFIG_DIR=$ANONHOME/.config/aswell ./bin/aswell --anon -c "trap 'echo bye' EXIT; echo hi" | strip_ansi)
+[ "$OUT" = "$(printf 'hi\nbye')" ] || fail_par "anon: EXIT trap skipped: $OUT"
+
+rm -f /tmp/aswell_ancestors.sh
+rm -rf "$ANONHOME"
+echo "[PASS] low-footprint (anon) profile: no writes, one process, expansion intact"
+
 echo ""
 echo "=================================================="
 echo "       ALL ASWELL TESTS PASSED SUCCESSFULLY!      "

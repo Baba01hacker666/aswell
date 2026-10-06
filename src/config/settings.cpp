@@ -164,6 +164,12 @@ const std::vector<SettingDef>& registry() {
         bool_setting("import_bashrc", {"bashrc", "bash_compat"}, "shell",
                      "Import ~/.bashrc aliases, exports and functions on startup",
                      &ShellConfig::import_bashrc),
+
+        // --- footprint ---------------------------------------------------------
+        bool_setting("anon_mode", {"anon", "quiet_profile", "stateless"}, "footprint",
+                     "Low-footprint profile: no history file, no config writes, no plugin "
+                     "autoload, no animations, and one process per command",
+                     &ShellConfig::anon_mode),
     };
     return kSettings;
 }

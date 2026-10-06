@@ -189,7 +189,16 @@ Aswell provides dedicated primitives and environment variables for rich terminal
 - **Full Escape Sequence Conformance**: `echo -e` and `printf` support octal escapes (`\033`), hex escapes (`\x1b`), `\e`, and `%b` (POSIX argument escape expansion).
 - **Environment & Aliases**: Exports `COLORTERM=truecolor` and `CLICOLOR=1` and sets default color aliases (`ls`, `grep`, `diff`, etc.) in interactive mode, toggleable via `colored_output=true` in `~/.config/aswell/config.txt`.
 
-### 5. Git & Commit Guidelines
+### 5. Low-Footprint (`anon`) Profile
+`--anon` (or `ASWELL_ANON=1`, or `anon_mode=true`) starts a deliberately quiet,
+stateless shell for locked-down machines: no history file, no config writes, no
+plugin autoload, no `~/.bashrc` import, no animations, and — for a program that is
+a single external command — `exec` in place instead of `fork`. It is a footprint
+reduction that is always visible in `aswell doctor`; it must never become a way to
+hide activity from an administrator. Adding a setting means adding the registry row
+*and* reading it in `apply_config()` (`src/main.cpp`), like any other knob.
+
+### 6. Git & Commit Guidelines
 - **Author Identity**: Commits must be authored by:
   `Baba01hacker666 <117832562+Baba01hacker666@users.noreply.github.com>`
 - **Commit Format**: Use conventional commits:

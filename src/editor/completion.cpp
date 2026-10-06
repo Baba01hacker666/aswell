@@ -330,7 +330,7 @@ std::vector<CompletionCandidate> CompletionEngine::complete_option_flags(
         {"ssh", {"-p", "-i", "-v", "-X", "-L", "-R", "-N", "-f"}},
         {"scp", {"-r", "-P", "-i", "-v", "-C"}},
         {"make", {"-j", "-k", "-n", "-C", "--dry-run"}},
-        {"aswell", {"--help", "--version", "--no-theme", "--safe-mode", "--config"}},
+        {"aswell", {"--help", "--version", "--no-theme", "--safe-mode", "--anon", "--config"}},
     };
     auto it = kFlags.find(cmd);
     if (it == kFlags.end()) return {};

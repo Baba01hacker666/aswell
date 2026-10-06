@@ -25,6 +25,12 @@ public:
     int execute_string(const std::string& line);
     int execute_script(const std::string& script);
 
+    // Anon profile: when the whole program is one external command with nothing
+    // left for the shell to do afterwards, replace this process instead of forking.
+    // Returns false when the program is not that shape, in which case the caller
+    // runs it normally. Only ever returns when exec could not happen.
+    bool try_exec_direct(const std::string& program);
+
     int execute_command_list(CommandListNode& list, ControlFlow& flow);
     int execute_and_or(AndOrNode& and_or, ControlFlow& flow);
     int execute_pipeline(PipelineNode& pipeline, bool async, ControlFlow& flow);

@@ -166,6 +166,18 @@ std::string ConfigManager::serialize(const ShellConfig& cfg) {
     return out.str();
 }
 
+// Set by the anon profile: config.txt is then read-only for the whole session, so
+// nothing the user (or a script) does can leave a file behind.
+bool g_config_read_only = false;
+
+void ConfigManager::set_read_only(bool read_only) {
+    g_config_read_only = read_only;
+}
+
+bool ConfigManager::is_read_only() {
+    return g_config_read_only;
+}
+
 // Truncating a user's config in place destroys it if the write fails part way
 // through. Write beside the target and rename, which is atomic.
 bool write_file_atomically(const std::string& path, const std::string& body) {
@@ -190,11 +202,13 @@ void ConfigManager::save(const ShellConfig& cfg) {
     fs_util::mkdir_p(dir + "/plugins");
     fs_util::mkdir_p(dir + "/commands");
 
+    if (g_config_read_only) return;
     write_file_atomically(dir + "/config.txt", serialize(cfg));
 }
 
 bool ConfigManager::update_keys(const std::vector<std::pair<std::string, std::string>>& updates) {
     if (updates.empty()) return true;
+    if (g_config_read_only) return false;
 
     std::string dir = get_config_dir();
     std::string file = dir + "/config.txt";

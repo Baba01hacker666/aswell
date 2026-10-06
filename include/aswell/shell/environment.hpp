@@ -72,6 +72,7 @@ public:
     bool opt_vi_mode = false;
     bool opt_no_theme = false;
     bool opt_safe_mode = false;
+    bool opt_anon = false;      // --anon / anon_mode: no on-disk state, minimal process count
 
     // Installed by the interactive loop. It re-reads config.txt, the active
     // theme stylesheet and prompt.html, then re-applies everything to the live

@@ -161,6 +161,11 @@ int print_effective_identity(const std::string& key, const Environment& env) {
 }
 
 bool write_key(const std::vector<std::pair<std::string, std::string>>& updates, std::string& err) {
+    if (ConfigManager::is_read_only()) {
+        err = "anon mode keeps config.txt read-only; the value was applied to this "
+              "session only\n  start a normal shell (without --anon) to make it stick";
+        return false;
+    }
     if (!ConfigManager::update_keys(updates)) {
         err = "could not write " + ConfigManager::get_config_dir() + "/config.txt";
         return false;
@@ -1269,6 +1274,12 @@ int SettingsCli::handle_doctor(const std::vector<std::string>& args, Environment
 
     Doctor doc;
     std::string config_dir = ConfigManager::get_config_dir();
+
+    // 0. Active profile, always reported so a quiet session is never a mystery.
+    if (env.opt_anon || ConfigManager::is_read_only()) {
+        doc.good("anon mode (low-footprint profile) active: no history file, config.txt "
+                 "read-only, no plugin autoload, no animations");
+    }
 
     // 1. Config directory & file
     struct stat st;

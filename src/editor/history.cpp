@@ -5,6 +5,16 @@ namespace aswell {
 
 History::History(std::string history_file)
     : history_file_(std::move(history_file)) {
+    // Honour the anon profile here rather than only in apply_config(): the
+    // guarantee "this session writes no history file" must not depend on which
+    // code path happened to build the History object.
+    if (const char* anon = std::getenv("ASWELL_ANON");
+        anon && std::string(anon) == "1") {
+        persistent_ = false;
+        history_file_.clear();
+        entries_.clear();
+        return;
+    }
     if (history_file_.empty()) {
         const char* home = std::getenv("HOME");
         if (home) {
@@ -12,6 +22,15 @@ History::History(std::string history_file)
         }
     }
     load();
+}
+
+void History::set_persistent(bool persistent) {
+    persistent_ = persistent;
+    if (!persistent_) {
+        // Drop whatever we read so the session does not carry the old file around.
+        entries_.clear();
+        history_file_.clear();
+    }
 }
 
 void History::add(const std::string& line) {
@@ -385,7 +404,7 @@ std::vector<std::string> History::search(const std::string& query) const {
 }
 
 void History::load() {
-    if (history_file_.empty()) return;
+    if (!persistent_ || history_file_.empty()) return;
     std::ifstream file(history_file_);
     if (!file) return;
 
@@ -399,7 +418,7 @@ void History::load() {
 }
 
 void History::save() {
-    if (history_file_.empty()) return;
+    if (!persistent_ || history_file_.empty()) return;
     std::ofstream file(history_file_);
     if (!file) return;
 

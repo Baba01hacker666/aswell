@@ -490,6 +490,66 @@ static void test_settings_json_shape() {
     std::cout << "[PASS] test_settings_json_shape\n";
 }
 
+// The low-footprint profile: one registry row, and a config.txt that cannot be
+// written while it is active.
+static void test_anon_mode_profile() {
+    tmp_config_dir();
+    ConfigManager::set_read_only(false);
+
+    const SettingDef* def = SettingsRegistry::find("anon_mode");
+    assert(def != nullptr);
+    assert(def->type == SettingType::BOOL);
+    assert(SettingsRegistry::find("anon") != nullptr);          // alias
+    assert(SettingsRegistry::find("quiet_profile") != nullptr);
+    assert(SettingsRegistry::find("stateless") != nullptr);
+    assert(SettingsRegistry::default_value(*def) == "false");
+
+    std::string err;
+    ShellConfig cfg;
+    assert(SettingsRegistry::apply(cfg, "anon_mode", "true", err));
+    assert(cfg.anon_mode);
+    assert(SettingsRegistry::apply(cfg, "anon", "false", err));
+    assert(!cfg.anon_mode);
+
+    // A missing tool must not silently pass; the flag is a plain boolean.
+    assert(!SettingsRegistry::apply(cfg, "anon_mode", "maybe", err));
+    assert(!err.empty());
+
+    // Reading still works, writing does not.
+    const std::string file = tmp_config_dir() + "/config.txt";
+    write_file(file, "anon_mode=true\n");
+    ConfigManager::set_read_only(true);
+    assert(ConfigManager::is_read_only());
+    assert(!ConfigManager::update_keys({{"show_git", "false"}}));
+
+    // The file on disk must be untouched, and still readable.
+    std::ifstream in(file);
+    std::string contents;
+    std::getline(in, contents);
+    assert(contents == "anon_mode=true");
+
+    ShellConfig parsed;
+    ConfigManager::parse_into("anon_mode=true\n", parsed, nullptr);
+    assert(parsed.anon_mode);
+
+    ConfigManager::save(parsed);          // must be a no-op while read-only
+    std::getline(in, contents);          // stream is exhausted; re-read instead
+    std::ifstream again(file);
+    std::getline(again, contents);
+    assert(contents == "anon_mode=true");
+
+    ConfigManager::set_read_only(false);
+    assert(!ConfigManager::is_read_only());
+    assert(ConfigManager::update_keys({{"show_git", "false"}}));
+    // The appended key lands at the end of the file, after any blank separator.
+    std::ifstream third(file);
+    std::stringstream written;
+    written << third.rdbuf();
+    const std::string text = written.str();
+    assert(text.find("anon_mode=true") != std::string::npos);
+    assert(text.find("show_git=false") != std::string::npos);
+}
+
 int main() {
     test_registry_lookup();
     test_bool_parsing();
@@ -502,6 +562,7 @@ int main() {
     test_hub_completion();
     test_prompt_format_settings();
     test_settings_json_shape();
+    test_anon_mode_profile();
     std::cout << "\nAll configuration & customization tests passed.\n";
     return 0;
 }

@@ -147,6 +147,73 @@ int Executor::execute_script(const std::string& script) {
     return execute_string(script);
 }
 
+bool Executor::try_exec_direct(const std::string& program) {
+    // Deliberately conservative: only a single simple command made of plain words
+    // qualifies. Anything with redirections, operators, assignments, pipelines or
+    // more than one command still needs the shell alive to do the work.
+    Lexer lexer(program);
+    Parser parser(lexer);
+    auto list = parser.parse_program();
+    // The AST shape is the whole test: anything with operators, redirections,
+    // assignments or several commands still needs a live shell.
+    if (!list || parser.has_error() || list->items.size() != 1) return false;
+    const CommandListNode::Item& item = list->items[0];
+    // A trailing `&` would background the command, which needs the shell to survive.
+    if (item.async || !item.and_or || item.and_or->pipelines.size() != 1) return false;
+    auto pipeline = item.and_or->pipelines[0].second;
+    if (!pipeline || pipeline->commands.size() != 1) return false;   // a pipeline needs a shell to wire it up
+
+    auto simple = std::dynamic_pointer_cast<SimpleCommandNode>(pipeline->commands[0]);
+    if (!simple || simple->words.empty() || !simple->redirections.empty() ||
+        !simple->assignments.empty()) {
+        return false;
+    }
+
+    // Expand before doing anything else: the AST still holds the raw token text,
+    // so `sh -c "exit 7"` arrives with its quotes intact. Quote removal, tilde,
+    // parameter, command and arithmetic expansion, field splitting and globbing
+    // all live in this step.
+    const std::vector<std::string> words = expansion_.expand_words(simple->words);
+    if (words.empty()) return false;
+    // Field splitting, globbing and brace expansion can turn one word into several.
+    // Exec'ing only the first would silently drop the rest (`ls *.txt` would run
+    // `ls a.txt`), so anything that is not one-word-in one-word-out is declined.
+    if (words.size() != simple->words.size()) return false;
+
+    // A builtin, function or alias still needs this process.
+    if (Builtins::is_builtin(words[0])) return false;
+    if (env_.has_function(words[0])) return false;
+    std::string alias_body;
+    if (env_.get_alias(words[0], alias_body)) return false;
+
+    const std::string path = env_.find_in_path(words[0]);
+    if (path.empty()) return false;
+
+    std::vector<char*> argv;
+    argv.reserve(words.size() + 1);
+    for (const std::string& w : words) argv.push_back(const_cast<char*>(w.c_str()));
+    argv.push_back(nullptr);
+
+    fflush(nullptr);
+    SignalManager::reset_signals_for_child();
+    execve(path.c_str(), argv.data(), env_.get_envp().data());
+
+    // Only reached when execve refused, which for a regular file means it is a
+    // script without a shebang: hand it to a shell exactly as execute_external does.
+    if (errno == ENOEXEC || errno == EACCES) {
+        const std::string sh_bin = get_fallback_shell();
+        std::vector<char*> sh_argv;
+        sh_argv.push_back(const_cast<char*>(sh_bin.c_str()));
+        for (const std::string& w : words) sh_argv.push_back(const_cast<char*>(w.c_str()));
+        sh_argv.push_back(nullptr);
+        execve(sh_bin.c_str(), sh_argv.data(), env_.get_envp().data());
+    }
+
+    // Nothing is reported here: the caller falls through to the normal path, which
+    // produces the canonical "command not found" / "permission denied" message.
+    return false;
+}
+
 std::string Executor::evaluate_command_substitution(const std::string& script) {
     int pipefd[2];
     if (pipe(pipefd) != 0) {

@@ -27,6 +27,10 @@ public:
     void save();
     void load();
 
+    // Anon profile: history lives only for the life of the shell. Nothing is read
+    // from or written to disk, so the shell leaves no trace of what was typed.
+    void set_persistent(bool persistent);
+
     // Policy knobs, driven by ~/.config/aswell/config.txt (history_size,
     // history_ignore_dups) so behaviour is configurable without recompiling.
     void set_max_entries(size_t max_entries);
@@ -36,6 +40,7 @@ public:
 
 private:
     std::string history_file_;
+    bool persistent_ = true;
     std::vector<std::string> entries_;
     size_t max_entries_ = 10000;
     bool ignore_dups_ = false;

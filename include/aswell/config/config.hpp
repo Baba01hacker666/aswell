@@ -31,6 +31,10 @@ struct ShellConfig {
     std::string custom_username;
     std::string custom_hostname;
     std::string custom_template_html;
+
+    // Low-footprint profile: keep no state on disk, load no third-party code and
+    // stay quiet. See `aswell --help` / docs/CONFIGURATION.md.
+    bool anon_mode = false;
 };
 
 // Diagnostics produced while reading config.txt. Unknown keys and malformed
@@ -94,6 +98,11 @@ public:
 
     static void save(const ShellConfig& cfg);
     static std::string serialize(const ShellConfig& cfg);
+
+    // Anon profile: make config.txt read-only for the session. save() and
+    // update_keys() then refuse to touch the filesystem.
+    static void set_read_only(bool read_only);
+    static bool is_read_only();
 
     // Line-oriented key editing that keeps comments, ordering and unknown keys.
     // Returns false when the file does not exist yet (caller may create it).

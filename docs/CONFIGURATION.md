@@ -151,6 +151,9 @@ the documentation cannot drift.
 | `import_bashrc` | bool | `true` | Import `~/.bashrc` aliases, exports and functions on startup |
 | `curated_aliases` | text | _empty_ | Install these alias-library selections at every start (`all`, `git,files`, …) |
 | `parallel_jobs` | int | `0` | Default concurrent jobs for `parallel` (0 = one per CPU, capped at 64) |
+| `anon_mode` | bool | `false` | Low-footprint profile: no on-disk state, no third-party code, one process per command |
+
+Aliases: `anon_mode` is also accepted as `anon`, `quiet_profile` and `stateless`.
 
 ### Environment Variables
 
@@ -161,6 +164,57 @@ the documentation cannot drift.
 | `ASWELL_NO_BASHRC=1` | Skip the `~/.bashrc` import for this session |
 | `ASWELL_PARALLEL_JOBS` | Default `parallel` concurrency for this session (overridden by `parallel_jobs` and `-j`) |
 | `ASWELL_USER`, `ASWELL_HOSTNAME` | Prompt identity (set for you by `aswell config set username …`) |
+| `ASWELL_ANON=1` | Same as `--anon` |
+
+## Low-Footprint Profile (`--anon`)
+
+`aswell --anon` starts a deliberately quiet, stateless shell. It is meant for
+locked-down machines where every extra process and every file written is
+something an administrator has to account for. Enable it three ways, all
+equivalent:
+
+```bash
+aswell --anon                     # one session
+aswell --anon -c 'make -j8'       # or a one-shot command
+ASWELL_ANON=1 aswell              # via the environment
+anon_mode=true                    # or permanently, in config.txt
+```
+
+What the profile guarantees:
+
+| | Normal | `--anon` |
+|---|---|---|
+| History file (`~/.aswell_history`) | read + written | **never touched**; history stays in memory and is discarded |
+| `config.txt` | read + written | **read-only**; `aswell config set` explains this instead of pretending to save |
+| Plugin autoload (`~/.config/aswell/plugins/*.so`) | loaded | **skipped** — no third-party code is `dlopen`ed |
+| `~/.bashrc` import | yes | **skipped** |
+| Curated alias file | sourced | **skipped** |
+| Animations, command ribbon, live reload | per config | **forced off** — no repainting, no per-prompt `stat()` polling |
+| `aswell -c CMD` / `aswell script.sh` with a single command | `fork` + `exec` | **`exec` in place — one process instead of two** |
+
+That last row is the one worth knowing about. When the whole program is a single
+external command with no redirections, operators, assignments or backgrounding,
+and no `EXIT` trap is set, `--anon` replaces the shell instead of forking a child:
+
+```bash
+aswell --anon -c 'ls -l /usr'   # one process: ls replaces the shell
+aswell -c 'ls -l /usr'         # two processes: shell forks, then execs ls
+```
+
+Anything that needs a live shell still behaves normally, including word
+expansion, so quoting and variables are unaffected:
+
+```bash
+aswell --anon -c 'echo "$HOME"'          # expands, as always
+aswell --anon -c 'a | b'                 # pipeline: forked, shell survives
+aswell --anon -c 'cd /tmp && pwd'        # builtins: forked
+aswell --anon -c "trap 'echo bye' EXIT"  # traps disable the shortcut
+```
+
+`aswell doctor` always reports whether the profile is active, so a quiet session
+is never a mystery. Two deliberate trade-offs: config edits are picked up on the
+next start rather than live, and turning `anon_mode` on from inside a running
+shell takes full effect next time (plugins already loaded cannot be unloaded).
 
 ## Concurrency: `parallel`, `retry` and `timeout`
 

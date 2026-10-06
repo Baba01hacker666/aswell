@@ -36,6 +36,8 @@ static void print_help() {
               << "  --no-theme     Disable theme engine and run plain POSIX output\n"
               << "  --safe-mode    Disable external plugins and third-party scripts\n"
               << "  --no-bashrc    Skip importing ~/.bashrc aliases and environment\n"
+              << "  --anon        Low-footprint profile: no history file, no config writes, no\n"
+              << "                 plugin autoload, no animations, and one process per command\n"
               << "  -j, --jobs N   Default concurrency for `parallel` (also: parallel_jobs setting)\n"
               << "  --version, -v  Print version information\n"
               << "  --help, -h     Print this help message\n\n"
@@ -53,7 +55,8 @@ static void print_help() {
               << "Environment:\n"
               << "  ASWELL_CONFIG_DIR  configuration directory (default ~/.config/aswell)\n"
               << "  ASWELL_THEME       overrides the configured theme for one session\n"
-              << "  ASWELL_NO_BASHRC=1 skip ~/.bashrc import for this session\n";
+              << "  ASWELL_NO_BASHRC=1 skip ~/.bashrc import for this session\n"
+              << "  ASWELL_ANON=1       same as --anon\n";
 }
 
 int main(int argc, char* argv[]) {
@@ -70,6 +73,27 @@ int main(int argc, char* argv[]) {
     std::string custom_config_path;
     bool no_bashrc_flag = false;
     long cli_parallel_jobs = -1;
+
+    // The low-footprint profile can be asked for three ways; the flag wins because
+    // it is the most recent word from the caller.
+    const char* anon_env = std::getenv("ASWELL_ANON");
+    bool anon_flag = (anon_env && std::string(anon_env) == "1");
+
+    // Pre-pass. `aswell --anon config set ...` dispatches the customization hub
+    // from inside the parsing loop below, so the profile has to be known before
+    // that loop runs or the command would quietly ignore it. --config is picked up
+    // here too, so the read-only guard applies to the right directory.
+    if (!anon_flag) {
+        for (int i = 1; i < argc; ++i) {
+            const std::string a = argv[i];
+            if (a == "--anon" || a == "--stateless") {
+                anon_flag = true;
+            } else if (a == "--config" && i + 1 < argc) {
+                ::setenv("ASWELL_CONFIG_DIR", argv[i + 1], 1);
+            }
+        }
+    }
+    if (anon_flag) ConfigManager::set_read_only(true);
 
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
@@ -103,6 +127,8 @@ int main(int argc, char* argv[]) {
             env.opt_safe_mode = true;
         } else if (arg == "--no-bashrc") {
             no_bashrc_flag = true;
+        } else if (arg == "--anon" || arg == "--stateless") {
+            anon_flag = true;
         } else if (arg == "-j" || arg == "--jobs" || str_util::starts_with(arg, "--jobs=")) {
             // Default concurrency for the `parallel` builtin; beats parallel_jobs
             // from config.txt because a flag on the command line is the newer wish.
@@ -178,6 +204,21 @@ int main(int argc, char* argv[]) {
             env.set_positional_params(script_args);
             break;
         }
+    }
+
+    // ---------------------------------------------------------------------
+    // Low-footprint profile (`--anon`, ASWELL_ANON=1, or anon_mode=true).
+    //
+    // The promise is narrow and checkable: this shell keeps no state on disk,
+    // loads no third-party code, writes nothing but the output you asked for,
+    // and uses one process per command. It is a footprint reduction, not
+    // concealment — the profile is always visible in `aswell config list`.
+    // ---------------------------------------------------------------------
+    early_cfg = ConfigManager::load();   // re-read: --config may have moved it
+    env.opt_anon = anon_flag || early_cfg.anon_mode;
+    if (env.opt_anon) {
+        ConfigManager::set_read_only(true);
+        env.set_var("ASWELL_ANON", "1", true);
     }
 
     Executor executor(env, jobs);
@@ -272,11 +313,16 @@ int main(int argc, char* argv[]) {
     // reproducible, and bash itself does not source rc files for -c either.)
     if (!command_string.empty() || !script_path.empty() || !isatty(STDIN_FILENO)) {
         apply_runtime_settings(early_cfg);
-        AliasLibrary::source_into(executor);
+        if (!env.opt_anon) AliasLibrary::source_into(executor);
     }
 
     if (!command_string.empty()) {
         SignalManager::init_signals(false);
+        // Anon profile: `aswell --anon -c 'ls -l'` becomes one process, not two.
+        // Only taken when there is nothing for the shell to do afterwards.
+        if (env.opt_anon && !env.has_trap(0)) {
+            executor.try_exec_direct(command_string);
+        }
         int ret = executor.execute_string(command_string);
         if (env.has_trap(0)) executor.execute_string(env.get_trap(0));
         return ret;
@@ -292,7 +338,10 @@ int main(int argc, char* argv[]) {
         }
         std::stringstream ss;
         ss << file.rdbuf();
-        int ret = executor.execute_script(ss.str());
+        const std::string script = ss.str();
+        // Same one-process shortcut, for a script that is a single command.
+        if (env.opt_anon && !env.has_trap(0)) executor.try_exec_direct(script);
+        int ret = executor.execute_script(script);
         if (env.has_trap(0)) executor.execute_string(env.get_trap(0));
         return ret;
     }
@@ -325,7 +374,7 @@ int main(int argc, char* argv[]) {
     // Bash compatibility first: import ~/.bashrc aliases/exports/functions so
     // `ll`, `gs`, custom PATH entries etc. just work. ~/.aswellrc is loaded
     // afterwards and always wins on conflicts.
-    if (cfg.import_bashrc && !env.opt_safe_mode && !no_bashrc_flag) {
+    if (cfg.import_bashrc && !env.opt_safe_mode && !env.opt_anon && !no_bashrc_flag) {
         const char* no_bash = std::getenv("ASWELL_NO_BASHRC");
         if (!no_bash || std::string(no_bash) != "1") {
             BashCompat::import_bashrc(env, &executor, false);
@@ -359,8 +408,12 @@ int main(int argc, char* argv[]) {
     }
 
     // Load user plugins from ~/.config/aswell/plugins
-    std::string user_plugin_dir = ConfigManager::get_config_dir() + "/plugins";
-    plugins.load_plugins_from_directory(user_plugin_dir, env.opt_safe_mode);
+    if (!env.opt_anon) {
+        // dlopen of third-party code is the loudest thing this shell can do, so the
+        // anon profile skips it outright.
+        std::string user_plugin_dir = ConfigManager::get_config_dir() + "/plugins";
+        plugins.load_plugins_from_directory(user_plugin_dir, env.opt_safe_mode);
+    }
 
     // ---------------------------------------------------------------------
     // Live configuration: one function applies everything the user can tweak
@@ -397,14 +450,29 @@ int main(int argc, char* argv[]) {
             next_cfg.theme_name = str_util::to_lower(str_util::trim(theme_override));
         }
 
-        auto_reload_enabled = next_cfg.auto_reload;
-        command_banner_enabled = next_cfg.enable_command_banner;
+        auto_reload_enabled = next_cfg.auto_reload && !env.opt_anon;
+        // Anon mode wins over every "make it look nicer" knob: a repainting
+        // prompt, a post-command ribbon and command animations are all ambient
+        // output, which is exactly what this profile exists to avoid.
+        command_banner_enabled = next_cfg.enable_command_banner && !env.opt_anon;
         env.opt_vi_mode = next_cfg.vi_mode;
+
+        if (next_cfg.anon_mode != env.opt_anon) {
+            // Turning the profile on from inside a session (`aswell config set
+            // anon_mode true`) cannot un-load plugins or un-import bashrc, so say so
+            // rather than pretending the change took effect.
+            env.opt_anon = next_cfg.anon_mode || anon_flag;
+            ConfigManager::set_read_only(env.opt_anon);
+            std::cerr << "aswell: anon mode " << (env.opt_anon ? "enabled" : "disabled")
+                      << " â takes full effect on the next shell; "
+                         "aswell config writes are "
+                      << (env.opt_anon ? "now read-only" : "enabled again") << "\n";
+        }
 
         // `parallel` default + curated alias library (shared with the one-shot path).
         apply_runtime_settings(next_cfg);
 
-        prompt_engine.set_animations_enabled(next_cfg.enable_animation);
+        prompt_engine.set_animations_enabled(next_cfg.enable_animation && !env.opt_anon);
         prompt_engine.set_time_format(next_cfg.time_format);
         prompt_engine.set_date_format(next_cfg.date_format);
         prompt_engine.set_custom_user(next_cfg.custom_username);
@@ -416,7 +484,9 @@ int main(int argc, char* argv[]) {
 
         editor.set_autosuggestions(next_cfg.enable_autosuggestions);
         editor.set_syntax_highlighting(next_cfg.enable_syntax_highlighting);
-        editor.set_command_animation(next_cfg.enable_command_animation);
+        editor.set_command_animation(next_cfg.enable_command_animation && !env.opt_anon);
+        // No history file: the session keeps entries in memory and forgets them.
+        editor.history().set_persistent(!env.opt_anon);
         if (next_cfg.history_size > 0) {
             editor.history().set_max_entries(static_cast<size_t>(next_cfg.history_size));
         }
@@ -466,10 +536,14 @@ int main(int argc, char* argv[]) {
         // Watch the customization files for the next iteration of the loop.
         watcher.clear();
         std::string config_dir = ConfigManager::get_config_dir();
+        // Stat-polling four files before every prompt is ambient work; the anon
+        // profile accepts that edits are picked up on the next start instead.
+        if (!env.opt_anon) {
         watcher.watch(config_dir + "/config.txt");
         watcher.watch(config_dir + "/theme.css");
         watcher.watch(config_dir + "/prompt.html");
         watcher.watch(config_dir + "/themes/" + next_cfg.theme_name + ".css");
+        }
         watcher.snapshot();
 
         // Typos in config.txt used to vanish silently. Report them, but stay
