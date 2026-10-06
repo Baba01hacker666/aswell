@@ -1,4 +1,5 @@
 #include "aswell/shell/environment.hpp"
+#include <iostream>
 
 namespace aswell {
 
@@ -115,7 +116,9 @@ void Environment::set_local_var(const std::string& name, const std::string& valu
         local_scopes_[i][name] = Variable{value, false, false};
         return;
     }
-    set_var(name, value, false);
+    // No function frame: `local` outside a function must not quietly create or
+    // overwrite a global, which is how it used to leak.
+    std::cerr << "aswell: local: can only be used in a function\n";
 }
 
 std::string Environment::get_var(const std::string& name) const {

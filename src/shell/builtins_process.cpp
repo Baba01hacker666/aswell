@@ -237,7 +237,12 @@ int Builtins::builtin_kill(const std::vector<std::string>& args, Environment& /*
         }
 
         if (group) negative_pid = true;
-        int rc = negative_pid ? kill(pid, sig) : kill(pid, sig);
+        if (negative_pid && pid == 0) {
+            std::cerr << "aswell: kill: refusing to signal process group " << target << "\n";
+            failures++;
+            continue;
+        }
+        int rc = negative_pid ? kill(-pid, sig) : kill(pid, sig);
         if (rc != 0) {
             std::cerr << "aswell: kill: " << target << ": " << strerror(errno) << "\n";
             failures++;

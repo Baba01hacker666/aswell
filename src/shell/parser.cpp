@@ -118,6 +118,13 @@ std::shared_ptr<CommandListNode> Parser::parse_program() {
     }
     auto list = parse_command_list();
     consume_newlines();
+    // Anything the parser did not recognise used to be dropped silently, so typos
+    // like `case x in esac) ...` or a stray `then` exited 0 having run half the
+    // script. Refuse to succeed with input left over.
+    if (!check(TokenType::TOKEN_EOF)) {
+        set_error("unexpected token '" + peek().value + "'");
+        return std::make_shared<CommandListNode>();
+    }
     return list;
 }
 
@@ -337,10 +344,11 @@ void Parser::collect_simple_command_words(SimpleCommandNode& cmd, bool& parsing_
             if (!parse_redirection(cmd.redirections)) return;
             continue;
         }
-        // `esac` is deliberately not absorbed: a case arm that swallows it would
-        // turn "missing ;;" into a silently accepted, wrong parse.
-        if (!cmd.words.empty() && is_keyword_token(peek().type) &&
-            !check(TokenType::KEYWORD_ESAC)) {
+        // Reserved words are ordinary arguments once a command name has been seen.
+        // `esac` needs no exemption: `;;` and the arm separator always close the
+        // simple command before it can be reached, and a *missing* `;;` is caught
+        // by parse_program() refusing to leave tokens unconsumed.
+        if (!cmd.words.empty() && is_keyword_token(peek().type)) {
             cmd.words.push_back(advance().value);
             continue;
         }
@@ -463,7 +471,8 @@ std::shared_ptr<ForNode> Parser::parse_for() {
     if (match(TokenType::KEYWORD_IN)) {
         node->explicit_words = true;
         while (!check(TokenType::TOKEN_SEMI) && !check(TokenType::TOKEN_NEWLINE) && !check(TokenType::KEYWORD_DO) && !check(TokenType::TOKEN_EOF)) {
-            if (check(TokenType::TOKEN_WORD)) {
+            // `for i in done` is a valid word list: only `do` ends it.
+            if (check(TokenType::TOKEN_WORD) || is_keyword_token(peek().type)) {
                 node->words.push_back(advance().value);
             } else {
                 break;

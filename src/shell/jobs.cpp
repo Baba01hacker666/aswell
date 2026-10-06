@@ -42,6 +42,14 @@ int JobManager::add_job(pid_t pgid, const std::string& cmd_line, const std::vect
         job.processes.push_back(proc);
     }
 
+    // Snapshot the terminal modes so `fg` can hand them back. Without this,
+    // fg would tcsetattr() a struct termios that was never initialised.
+    job.tmodes = shell_tmodes_;
+    if (isatty(STDIN_FILENO)) {
+        struct termios live {};
+        if (tcgetattr(STDIN_FILENO, &live) == 0) job.tmodes = live;
+    }
+
     jobs_[job.id] = job;
     return job.id;
 }
@@ -140,7 +148,7 @@ bool JobManager::update_status() {
             if (next != job.state) changed = true;
             job.state = next;
 
-            if (next == JobState::DONE) {
+            if (next == JobState::DONE && !job.processes.empty()) {
                 // A job's status is the status of its last process, which is
                 // what `$?` and the notification line report.
                 const Process& last = job.processes.back();
@@ -161,10 +169,7 @@ bool JobManager::update_status() {
 }
 
 int JobManager::notify_finished() {
-    if (!update_status()) {
-        // Still sweep for jobs that finished since the last call.
-        update_status();
-    }
+    update_status();
 
     int printed = 0;
     std::vector<int> forget;
@@ -210,6 +215,10 @@ int JobManager::wait_for_job(int id) {
                     proc.stopped = false;
                 }
                 progressed = true;
+            } else if (r < 0 && errno == EINTR) {
+                // A SIGCHLD from an unrelated child must not be mistaken for
+                // "this job is gone"; keep waiting.
+                continue;
             } else if (r < 0) {
                 // Already reaped (e.g. by the poll before the prompt): trust the
                 // bookkeeping instead of blocking forever.
@@ -227,9 +236,11 @@ int JobManager::wait_for_job(int id) {
 
         if (all_completed) {
             job->state = JobState::DONE;
-            const Process& last = job->processes.back();
-            if (WIFEXITED(last.status)) job->exit_status = WEXITSTATUS(last.status);
-            else if (WIFSIGNALED(last.status)) job->exit_status = 128 + WTERMSIG(last.status);
+            if (!job->processes.empty()) {
+                const Process& last = job->processes.back();
+                if (WIFEXITED(last.status)) job->exit_status = WEXITSTATUS(last.status);
+                else if (WIFSIGNALED(last.status)) job->exit_status = 128 + WTERMSIG(last.status);
+            }
             break;
         }
         if (any_stopped) {
@@ -263,6 +274,7 @@ int JobManager::wait_for_any() {
     while (true) {
         int status = 0;
         pid_t pid = waitpid(-1, &status, WUNTRACED | WCONTINUED);
+        if (pid < 0 && errno == EINTR) continue;
         if (pid <= 0) return -1;
 
         Job* owner = get_job_by_pid(pid);
@@ -319,11 +331,11 @@ Job* JobManager::resolve(const std::string& spec) {
             return prev;
         }
         if (body[0] == '?') {
-            // %?cmd matches the newest job whose command line starts with cmd.
+            // %?cmd matches the newest job whose command line *contains* cmd.
             std::string want = body.substr(1);
             Job* found = nullptr;
             for (auto& [id, job] : jobs_) {
-                if (str_util::starts_with(job.command_line, want)) found = &job;
+                if (job.command_line.find(want) != std::string::npos) found = &job;
             }
             return found;
         }
@@ -336,10 +348,10 @@ Job* JobManager::resolve(const std::string& spec) {
             try { id = std::stoi(body); } catch (...) { return nullptr; }
             return get_job(id);
         }
-        // %string matches the newest job whose command line contains the string.
+        // %string matches the newest job whose command line starts with the string.
         Job* found = nullptr;
         for (auto& [id, job] : jobs_) {
-            if (job.command_line.find(body) != std::string::npos) found = &job;
+            if (str_util::starts_with(job.command_line, body)) found = &job;
         }
         return found;
     }
@@ -371,7 +383,7 @@ void JobManager::put_job_in_foreground(int id, bool cont) {
     }
 
     if (cont) {
-        tcsetattr(STDIN_FILENO, TCSADRAIN, &job->tmodes);
+        if (isatty(STDIN_FILENO)) tcsetattr(STDIN_FILENO, TCSADRAIN, &job->tmodes);
         kill(-job->pgid, SIGCONT);
         job->state = JobState::RUNNING;
     }

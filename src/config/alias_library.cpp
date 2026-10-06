@@ -18,6 +18,9 @@
 #include "aswell/shell/environment.hpp"
 #include "aswell/shell/executor.hpp"
 #include <fstream>
+#include <cctype>
+#include <cstdio>
+#include <unistd.h>
 #include <sstream>
 #include <algorithm>
 #include <sys/stat.h>
@@ -272,10 +275,16 @@ std::string AliasLibrary::render(const std::vector<const AliasDef*>& defs) {
         }
         if (def->kind == AliasKind::ALIAS) {
             out += std::string("alias ") + def->name + "=" + str_util::escape_shell(def->definition);
+            out += "   # " + std::string(def->description) + "\n";
         } else {
+            // The description goes on its own line: a trailing "# ..." after the
+            // closing brace would stop remove_names_from_text() from ever seeing a
+            // bare "}" and would make uninstalling one function eat the rest of the
+            // file.
             out += def->definition;
+            if (!out.empty() && out.back() != '\n') out += "\n";
+            out += "# " + std::string(def->description) + "\n";
         }
-        out += "   # " + std::string(def->description) + "\n";
     }
     return out;
 }
@@ -327,6 +336,26 @@ bool ensure_parent_dir(const std::string& path, std::string& err) {
 }
 } // namespace
 
+namespace {
+// The alias file is sourced on every shell start, so it must never be left
+// half-written. Write beside it and rename.
+bool write_atomically(const std::string& path, const std::string& body) {
+    const std::string tmp = path + ".tmp";
+    {
+        std::ofstream out(tmp, std::ios::trunc);
+        if (!out) return false;
+        out << body;
+        out.flush();
+        if (!out.good()) return false;
+    }
+    if (::rename(tmp.c_str(), path.c_str()) != 0) {
+        ::unlink(tmp.c_str());
+        return false;
+    }
+    return true;
+}
+} // namespace
+
 bool AliasLibrary::append_to_file(const std::vector<const AliasDef*>& defs, std::string& err) {
     if (defs.empty()) {
         err = "nothing selected";
@@ -353,18 +382,26 @@ bool AliasLibrary::append_to_file(const std::vector<const AliasDef*>& defs, std:
     }
     if (!cleaned.empty() && cleaned.back() != '\n') cleaned += "\n";
 
-    std::ofstream out(path, std::ios::trunc);
-    if (!out) {
-        err = "cannot write " + path + ": " + std::strerror(errno);
-        return false;
-    }
-    out << cleaned << header << body;
-    if (!out.good()) {
+    if (!write_atomically(path, cleaned + header + body)) {
         err = "cannot write " + path + ": " + std::strerror(errno);
         return false;
     }
     return true;
 }
+
+namespace {
+// A function definition line looks like `name() {` or `name()`.
+bool is_definition_header(const std::string& t) {
+    size_t paren = t.find("()");
+    if (paren == std::string::npos || paren == 0) return false;
+    for (size_t i = 0; i < paren; ++i) {
+        const char c = t[i];
+        const bool ok = std::isalnum(static_cast<unsigned char>(c)) || c == '_' || c == '-' || c == '.';
+        if (!ok) return false;
+    }
+    return true;
+}
+} // namespace
 
 std::vector<std::string> AliasLibrary::names_in_file(std::string* content_out) {
     std::vector<std::string> names;
@@ -381,7 +418,9 @@ std::vector<std::string> AliasLibrary::names_in_file(std::string* content_out) {
             std::string rest = t.substr(6);
             size_t eq = rest.find('=');
             if (eq != std::string::npos) names.push_back(rest.substr(0, eq));
-        } else if (!t.empty() && t[0] != '#' && t.find("()") != std::string::npos) {
+        } else if (!t.empty() && t[0] != '#' && is_definition_header(t)) {
+            // `name() {` opens a function; `local files=()` inside a body does not,
+            // because what precedes the "()" is not a bare name.
             size_t paren = t.find("()");
             names.push_back(str_util::trim(t.substr(0, paren)));
         }
@@ -410,10 +449,12 @@ std::string AliasLibrary::remove_names_from_text(const std::string& text,
             if (str_util::starts_with(t, fn_prefix)) { drop = true; break; }
         }
         if (drop) {
-            // A function body spans until its closing brace at column 0.
+            // A function body spans until its closing brace, which may carry a
+            // trailing comment when the file was written by an older release.
             if (t.find("()") != std::string::npos && line.find('}') == std::string::npos) {
                 while (std::getline(lines, line)) {
-                    if (str_util::trim(line) == "}") break;
+                    const std::string body = str_util::trim(line);
+                    if (!body.empty() && body[0] == '}') break;
                 }
             }
             continue;
@@ -440,13 +481,11 @@ bool AliasLibrary::remove_names_from_file(const std::vector<std::string>& names,
     }
     std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
     std::string cleaned = remove_names_from_text(text, names);
-    std::ofstream out(path, std::ios::trunc);
-    if (!out) {
+    if (!write_atomically(path, cleaned)) {
         err = "cannot write " + path;
         return false;
     }
-    out << cleaned;
-    return out.good();
+    return true;
 }
 
 std::vector<const AliasDef*> AliasLibrary::for_names(const std::vector<std::string>& names) {

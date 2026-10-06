@@ -1,5 +1,7 @@
 #include "aswell/config/theme.hpp"
 #include <fstream>
+#include <cstring>
+#include <unistd.h>
 #include <dirent.h>
 #include <sys/stat.h>
 
@@ -538,6 +540,12 @@ std::vector<ThemeEntry> ThemeManager::list_themes(const std::string& config_dir,
 std::vector<std::string> ThemeManager::theme_names(const std::string& config_dir) {
     std::vector<std::string> names;
     for (const auto& e : list_themes(config_dir, "")) names.push_back(e.name);
+    // The legacy single-file theme is a real choice, and `aswell theme set custom`
+    // is the documented way to reach it. resolve() understands these names but the
+    // registry validates against this list, so they have to appear here too.
+    if (is_regular_file(config_dir + "/theme.css")) {
+        for (const char* legacy : {"custom", "user", "theme.css"}) names.push_back(legacy);
+    }
     return names;
 }
 
@@ -592,7 +600,9 @@ ThemeInfo ThemeManager::resolve(const std::string& config_dir, const std::string
         }
     }
 
-    // 3. Legacy ~/.config/aswell/theme.css, addressable directly too.
+    // 3. Legacy ~/.config/aswell/theme.css. Checked after the user themes above, so
+    // an explicit `theme=<name>` with themes/<name>.css still wins, and addressed
+    // directly by `custom`, `user` or `theme.css`.
     std::string legacy = read_file_contents(config_dir + "/theme.css");
     if (!legacy.empty() &&
         (wanted == "theme.css" || wanted == "custom" || wanted == "user" || wanted.empty())) {
@@ -632,7 +642,8 @@ std::string ThemeManager::suggest(const std::string& config_dir, const std::stri
 }
 
 bool ThemeManager::create_theme(const std::string& config_dir, const std::string& name,
-                               const std::string& from, std::string& path_out, std::string& err) {
+                               const std::string& from, std::string& path_out, std::string& err,
+                               bool force) {
     std::string wanted = str_util::to_lower(str_util::trim(name));
     if (wanted.empty()) {
         err = "theme name must not be empty";
@@ -641,7 +652,7 @@ bool ThemeManager::create_theme(const std::string& config_dir, const std::string
     for (char c : wanted) {
         bool ok = (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c == '-' || c == '.';
         if (!ok) {
-            err = "theme names may only contain a-z, 0-9, '_' and '-'";
+            err = "theme names may only contain a-z, 0-9, '_', '-' and '.'";
             return false;
         }
     }
@@ -652,9 +663,17 @@ bool ThemeManager::create_theme(const std::string& config_dir, const std::string
 
     std::string themes_dir = config_dir + "/themes";
     path_out = themes_dir + "/" + wanted + ".css";
+    // --force unlinks here, after the name whitelist above has run: doing it before
+    // validation would let `theme new ../../victim --force` delete an unrelated file.
     if (is_regular_file(path_out)) {
-        err = path_out + " already exists (use --force to overwrite)";
-        return false;
+        if (!force) {
+            err = path_out + " already exists (use --force to overwrite)";
+            return false;
+        }
+        if (::unlink(path_out.c_str()) != 0) {
+            err = "cannot overwrite " + path_out + ": " + std::strerror(errno);
+            return false;
+        }
     }
     if (!fs_util::mkdir_p(themes_dir)) {
         err = "could not create " + themes_dir;

@@ -47,7 +47,8 @@ public:
 
     // Scaffolds ~/.config/aswell/themes/<name>.css seeded from an existing theme.
     static bool create_theme(const std::string& config_dir, const std::string& name,
-                            const std::string& from, std::string& path_out, std::string& err);
+                            const std::string& from, std::string& path_out, std::string& err,
+                            bool force = false);
 
     static std::string get_default_css();
     static std::string get_cyberpunk_css();

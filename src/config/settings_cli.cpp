@@ -513,13 +513,17 @@ int SettingsCli::handle_config(const std::vector<std::string>& args, Environment
         ShellConfig cfg = ConfigManager::load();
         std::vector<std::pair<std::string, std::string>> updates;
         for (const auto& pair : pairs) {
+            // Honour `key=default` here too, not only in set_and_save(), otherwise
+            // `config set username=default other=1` stores the literal "default".
+            const SettingDef* def = SettingsRegistry::find(pair.first);
+            if (!def) return 1;
+            const std::string requested =
+                (def->type == SettingType::STRING && is_reset_word(pair.second)) ? "" : pair.second;
             std::string err;
-            if (!SettingsRegistry::apply(cfg, pair.first, pair.second, err)) {
+            if (!SettingsRegistry::apply(cfg, pair.first, requested, err)) {
                 report_error(err);
                 return 1;
             }
-            const SettingDef* def = SettingsRegistry::find(pair.first);
-            if (!def) return 1;
             updates.emplace_back(def->key, def->get(cfg));
         }
         std::string err;
@@ -600,7 +604,8 @@ int SettingsCli::handle_config(const std::vector<std::string>& args, Environment
     if (sub == "theme") {
         // Legacy shapes kept working: `aswell config theme`,
         // `aswell config theme <name>` and `aswell config theme set <name>`.
-        size_t name_idx = (args.size() >= 4 && args[3] == "set") ? 4 : 2;
+        // `config theme <name>` puts the name at 2, `config theme set <name>` at 3.
+        size_t name_idx = (args.size() >= 4 && args[2] == "set") ? 3 : 2;
         if (args.size() <= name_idx) return SettingsCli::handle_theme({"theme", "list"}, env);
         return SettingsCli::handle_theme({"theme", "set", args[name_idx]}, env);
     }
@@ -1013,19 +1018,31 @@ int SettingsCli::handle_aliases(const std::vector<std::string>& args, Environmen
 
     // install
     std::vector<std::string> skipped;
-    std::vector<std::string> live = AliasLibrary::install(env, executor, defs, force, skipped);
+    std::vector<const AliasDef*> persistable;
+    for (const AliasDef* def : defs) {
+        if (def->needs && *def->needs && env.find_in_path(def->needs).empty()) continue;
+        persistable.push_back(def);
+    }
+    if (persistable.empty()) {
+        report_error("nothing to install: every entry needs a tool that is not installed"
+                     " (see the notes above)");
+        return 1;
+    }
+    std::vector<std::string> live = AliasLibrary::install(env, executor, persistable, force, skipped);
 
+    // Persist only what was actually applied: writing the skipped entries would
+    // define them in every future shell, which is exactly what `needs` prevents.
     std::string err;
-    if (!AliasLibrary::append_to_file(defs, err)) {
+    if (!AliasLibrary::append_to_file(persistable, err)) {
         std::cerr << "aswell: aliases: " << err << "\n";
         return 1;
     }
 
     size_t warnings = 0;
-    for (const AliasDef* def : defs) {
+    for (const AliasDef* def : persistable) {
         if (def->shadows) warnings++;
     }
-    std::cout << "\033[32m✓\033[0m installed " << defs.size() << " entry/entries into "
+    std::cout << "\033[32m✓\033[0m installed " << persistable.size() << " entry/entries into "
               << AliasLibrary::file_path() << "\n";
     if (env.opt_interactive) {
         std::cout << "  applied to this shell (" << live.size() << " new)";
@@ -1178,6 +1195,14 @@ void validate_prompt_html(const std::string& html, const std::string& path, Doct
         bool self_closing = !inner.empty() && inner.back() == '/';
         if (self_closing) inner.pop_back();
 
+        // `<!-- note -->`, `<![CDATA[…]]>` and `<?…?>` are not elements: the name
+        // scan below would read their "name" as empty and report every HTML comment
+        // as a broken tag.
+        if (!inner.empty() && (inner.front() == '!' || inner.front() == '?')) {
+            i = end;
+            continue;
+        }
+
         size_t name_end = 0;
         while (name_end < inner.size() &&
                (std::isalnum(static_cast<unsigned char>(inner[name_end])) || inner[name_end] == '-' ||
@@ -1299,6 +1324,11 @@ int SettingsCli::handle_doctor(const std::vector<std::string>& args, Environment
                     "aswell theme new " + theme.name + " --force");
     } else {
         doc.good("theme '" + theme.name + "' loaded from " + theme.source);
+    }
+    if (theme.is_user) {
+        // resolve() sets is_user exactly when it loaded themes/<name>.css, so this
+        // is the user's own stylesheet: the one most worth validating.
+        validate_css(theme.css_content, theme.source, doc);
     }
     if (!theme.is_user) {
         std::string user_theme_path = config_dir + "/themes/" + effective_theme + ".css";

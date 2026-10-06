@@ -1,6 +1,8 @@
 #include "aswell/config/config.hpp"
 #include "aswell/config/settings.hpp"
 #include <fstream>
+#include <cstdio>
+#include <unistd.h>
 #include <sys/stat.h>
 
 namespace aswell {
@@ -164,15 +166,31 @@ std::string ConfigManager::serialize(const ShellConfig& cfg) {
     return out.str();
 }
 
+// Truncating a user's config in place destroys it if the write fails part way
+// through. Write beside the target and rename, which is atomic.
+bool write_file_atomically(const std::string& path, const std::string& body) {
+    const std::string tmp = path + ".tmp";
+    {
+        std::ofstream out(tmp, std::ios::trunc);
+        if (!out) return false;
+        out << body;
+        out.flush();
+        if (!out.good()) return false;
+    }
+    if (::rename(tmp.c_str(), path.c_str()) != 0) {
+        ::unlink(tmp.c_str());
+        return false;
+    }
+    return true;
+}
+
 void ConfigManager::save(const ShellConfig& cfg) {
     std::string dir = get_config_dir();
     fs_util::mkdir_p(dir + "/themes");
     fs_util::mkdir_p(dir + "/plugins");
     fs_util::mkdir_p(dir + "/commands");
 
-    std::ofstream f(dir + "/config.txt");
-    if (!f) return;
-    f << serialize(cfg);
+    write_file_atomically(dir + "/config.txt", serialize(cfg));
 }
 
 bool ConfigManager::update_keys(const std::vector<std::pair<std::string, std::string>>& updates) {
@@ -195,33 +213,40 @@ bool ConfigManager::update_keys(const std::vector<std::pair<std::string, std::st
     if (!existed) fs_util::mkdir_p(dir);
 
     std::vector<std::pair<std::string, std::string>> pending = updates;
+    std::vector<bool> seen(pending.size(), false);
 
-    // Rewrite matching keys in place so comments and user ordering survive.
+    // Rewrite every line that names the key, so comments and user ordering survive.
     for (auto& line : lines) {
         std::string_view trimmed = str_util::trim_sv(line);
         if (trimmed.empty() || trimmed.front() == '#') continue;
         size_t eq = trimmed.find('=');
         if (eq == std::string_view::npos) continue;
-        std::string key = str_util::to_lower(str_util::trim(trimmed.substr(0, eq)));
+        const std::string raw_key = str_util::trim(trimmed.substr(0, eq));
+        // Parse resolves aliases ("ignoredups" -> history_ignore_dups) and applies
+        // lines in file order, so the last match wins. Matching the raw string here
+        // would rewrite the canonical line and leave a later alias line in charge.
+        const SettingDef* def = SettingsRegistry::find(raw_key);
+        const std::string key = def ? def->key : str_util::to_lower(raw_key);
 
         for (size_t i = 0; i < pending.size(); ++i) {
             if (pending[i].first != key) continue;
-            line = key + "=" + pending[i].second;
-            pending.erase(pending.begin() + static_cast<long>(i));
+            // All lines naming this key get the new value, not just the first: a
+            // config that sets the same key twice (once by alias) would otherwise
+            // keep whichever line came last in charge.
+            line = raw_key + "=" + pending[i].second;
+            seen[i] = true;
             break;
         }
-        if (pending.empty()) break;
     }
-
-    for (const auto& kv : pending) {
+    for (size_t i = 0; i < pending.size(); ++i) {
+        if (seen[i]) continue;
         if (!lines.empty() && !str_util::trim(lines.back()).empty()) lines.push_back("");
-        lines.push_back(kv.first + "=" + kv.second);
+        lines.push_back(pending[i].first + "=" + pending[i].second);
     }
 
-    std::ofstream out(file, std::ios::trunc);
-    if (!out) return false;
-    for (const auto& l : lines) out << l << "\n";
-    return true;
+    std::string body;
+    for (const auto& l : lines) body += l + "\n";
+    return write_file_atomically(file, body);
 }
 
 std::string ConfigManager::build_template(const ShellConfig& cfg) {
@@ -254,7 +279,10 @@ std::string ConfigManager::build_template(const ShellConfig& cfg) {
 bool ConfigWatcher::stat_of(const std::string& path, long long& mtime, long long& size) {
     struct stat st;
     if (stat(path.c_str(), &st) != 0) return false;
-    mtime = static_cast<long long>(st.st_mtime);
+    // Nanosecond resolution: st_mtime alone cannot see a same-size rewrite that
+    // lands in the same second, which silently breaks the hot-reload guarantee.
+    mtime = static_cast<long long>(st.st_mtim.tv_sec) * 1000000000LL +
+            static_cast<long long>(st.st_mtim.tv_nsec);
     size = static_cast<long long>(st.st_size);
     return true;
 }

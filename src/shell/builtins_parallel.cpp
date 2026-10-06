@@ -16,6 +16,7 @@
 #include <vector>
 #include <string>
 #include <map>
+#include <memory>
 #include <functional>
 #include <poll.h>
 #include <unistd.h>
@@ -156,6 +157,25 @@ size_t parallel_default_jobs(long long configured) {
 
 namespace {
 
+// Hands the terminal to a process group this builtin just created, and always
+// takes it back. A job that reads the keyboard while sitting in a different
+// process group gets SIGTTIN and stops, which used to leave `timeout` and
+// `parallel` waiting forever on a job nobody can resume.
+class TerminalLoan {
+public:
+    explicit TerminalLoan(pid_t pgid) : active_(pgid > 0 && isatty(STDIN_FILENO)) {
+        if (active_) tcsetpgrp(STDIN_FILENO, pgid);
+    }
+    ~TerminalLoan() {
+        if (active_ && isatty(STDIN_FILENO)) tcsetpgrp(STDIN_FILENO, getpgrp());
+    }
+    TerminalLoan(const TerminalLoan&) = delete;
+    TerminalLoan& operator=(const TerminalLoan&) = delete;
+
+private:
+    bool active_;
+};
+
 // Forwards a terminal interrupt to every live job group, and marks jobs that
 // blew their timeout. Installed only while `parallel` is running.
 std::vector<pid_t>* g_parallel_groups = nullptr;
@@ -263,11 +283,17 @@ int Builtins::builtin_parallel(const std::vector<std::string>& args, Environment
             continue;
         }
 
+        // Index of the option letter inside `a`, so an attached value can be
+        // sliced off the right place in a clustered short-option group.
+        size_t letter_at = 1;
+
         auto value_for = [&](std::string& out) -> bool {
             size_t eq = a.find('=');
             if (eq != std::string::npos) { out = a.substr(eq + 1); return true; }
             // `-j4`: an attached value follows the option letter immediately.
-            if (!longopt && a.size() > 2) { out = a.substr(2); return true; }
+            // `letter_at` is the index of that letter, so `-kj4` reads "4" and not
+            // the rest of the cluster.
+            if (!longopt && a.size() > letter_at + 1) { out = a.substr(letter_at + 1); return true; }
             if (i + 1 < args.size()) { out = args[++i]; return true; }
             std::cerr << "aswell: parallel: " << a << " needs a value\n";
             return false;
@@ -305,6 +331,7 @@ int Builtins::builtin_parallel(const std::vector<std::string>& args, Environment
 
         // Clustered short options: walk the letters after the '-'.
         for (size_t k = 1; k < a.size(); ++k) {
+            letter_at = k;
             const char c = a[k];
             if (c == 'h') { usage(); return 0; }
             else if (c == 'j') {
@@ -355,6 +382,12 @@ int Builtins::builtin_parallel(const std::vector<std::string>& args, Environment
             return 2;
         }
         for (const auto& item : items) commands.push_back(parallel_apply_template(tmpl, item));
+    } else if (positional.empty() && isatty(STDIN_FILENO)) {
+        // Nothing to run and nothing piped in: without this the stdin read below
+        // would sit on the terminal and happily execute the command line the user
+        // types next.
+        usage();
+        return 2;
     } else if (!positional.empty() && isatty(STDIN_FILENO)) {
         // Nothing piped in: each argument is a job in its own right.
         commands = positional;
@@ -411,6 +444,9 @@ int Builtins::builtin_parallel(const std::vector<std::string>& args, Environment
 
     std::vector<pid_t> groups;
     SignalForwarder forwarder(groups);
+    // Several concurrent jobs cannot share one keyboard, so the terminal is only
+    // handed to a job when this is a single-job run.
+    std::unique_ptr<TerminalLoan> terminal;
 
     size_t next = 0;
     size_t running = 0;
@@ -423,7 +459,16 @@ int Builtins::builtin_parallel(const std::vector<std::string>& args, Environment
     auto reap_ready = [&](bool blocking) {
         int wstatus = 0;
         for (;;) {
-            pid_t done = waitpid(-1, &wstatus, blocking ? 0 : WNOHANG);
+            // Reap by pid, never with waitpid(-1): a bare -1 competes with the
+            // shell's own job table and whichever loses permanently forgets the
+            // exit status of a tracked background job.
+            pid_t done = -1;
+            for (auto& task : tasks) {
+                if (task.finished || task.pid <= 0) continue;
+                pid_t r = waitpid(task.pid, &wstatus, blocking ? 0 : WNOHANG);
+                if (r == task.pid) { done = r; break; }
+                if (r < 0 && errno != EINTR) { task.finished = true; break; }
+            }
             if (done <= 0) return;
             for (auto& task : tasks) {
                 if (task.pid != done || task.finished) continue;
@@ -436,6 +481,24 @@ int Builtins::builtin_parallel(const std::vector<std::string>& args, Environment
                 reaped++;
                 break;
             }
+        }
+    };
+
+    // Kills every launched job group, closes every capture pipe and reaps the
+    // children, so a failed spawn cannot leak fds or leave orphans behind in a
+    // long-lived shell.
+    auto abandon = [&](std::vector<ParallelTask>& live) {
+        for (auto& task : live) {
+            if (task.pid > 0) kill(-task.pid, SIGKILL);
+        }
+        for (auto& task : live) {
+            if (task.fd >= 0) { close(task.fd); task.fd = -1; }
+        }
+        for (auto& task : live) {
+            if (task.pid <= 0) continue;
+            int st = 0;
+            while (waitpid(task.pid, &st, 0) < 0 && errno == EINTR) { /* retry */ }
+            task.finished = true;
         }
     };
 
@@ -455,12 +518,16 @@ int Builtins::builtin_parallel(const std::vector<std::string>& args, Environment
             int pipefd[2];
             if (pipe(pipefd) != 0) {
                 std::cerr << "aswell: parallel: pipe failed\n";
+                abandon(tasks);
                 return 1;
             }
 
             pid_t pid = fork();
             if (pid < 0) {
                 std::cerr << "aswell: parallel: fork failed\n";
+                close(pipefd[0]);
+                close(pipefd[1]);
+                abandon(tasks);
                 return 1;
             }
 
@@ -482,6 +549,7 @@ int Builtins::builtin_parallel(const std::vector<std::string>& args, Environment
 
             close(pipefd[1]);
             fcntl(pipefd[0], F_SETFL, O_NONBLOCK);
+            if (!terminal && commands.size() == 1) terminal = std::make_unique<TerminalLoan>(pid);
             task.pid = pid;
             task.fd = pipefd[0];
             groups.push_back(pid);
@@ -563,6 +631,7 @@ int Builtins::builtin_parallel(const std::vector<std::string>& args, Environment
 
     // Drain stragglers (jobs that finished while we were printing).
     reap_ready(false);
+    reap_ready(true);
     for (size_t slot = 0; slot < tasks.size(); ++slot) {
         ParallelTask& task = tasks[slot];
         if (task.fd < 0) continue;
@@ -659,12 +728,15 @@ int Builtins::builtin_retry(const std::vector<std::string>& args, Environment& e
 
         std::string val;
         bool ok = true;
+        // `-n5` is the same option as `-n 5`: match on the letter, not the whole
+        // word, so the attached-value form is not reported as unknown.
+        const char letter = (a.size() > 1 && a[1] != '-') ? a[1] : '\0';
         if (a == "-h" || a == "--help") { retry_usage(); return 0; }
-        else if (a == "-n" || str_util::starts_with(a, "--tries")) { ok = take_value(val); if (ok) tries = std::atoi(val.c_str()); }
-        else if (a == "-d" || str_util::starts_with(a, "--delay")) { ok = take_value(val); if (ok) delay = std::atof(val.c_str()); }
-        else if (a == "-x" || str_util::starts_with(a, "--max-delay")) { ok = take_value(val); if (ok) max_delay = std::atof(val.c_str()); }
-        else if (a == "-b" || str_util::starts_with(a, "--backoff")) { ok = take_value(val); if (ok) backoff = std::atof(val.c_str()); }
-        else if (a == "-s" || str_util::starts_with(a, "--status")) {
+        else if (a == "-n" || letter == 'n' || str_util::starts_with(a, "--tries")) { ok = take_value(val); if (ok) tries = std::atoi(val.c_str()); }
+        else if (a == "-d" || letter == 'd' || str_util::starts_with(a, "--delay")) { ok = take_value(val); if (ok) delay = std::atof(val.c_str()); }
+        else if (a == "-x" || letter == 'x' || str_util::starts_with(a, "--max-delay")) { ok = take_value(val); if (ok) max_delay = std::atof(val.c_str()); }
+        else if (a == "-b" || letter == 'b' || str_util::starts_with(a, "--backoff")) { ok = take_value(val); if (ok) backoff = std::atof(val.c_str()); }
+        else if (a == "-s" || letter == 's' || str_util::starts_with(a, "--status")) {
             ok = take_value(val);
             if (ok) {
                 std::vector<int> parsed = parse_status_list(val);
@@ -715,6 +787,7 @@ int Builtins::builtin_retry(const std::vector<std::string>& args, Environment& e
         }
         if (pid == 0) {
             SignalManager::reset_signals_for_child();
+            setpgid(0, 0);
             JobManager local_jobs;
             Environment local_env = env;
             Executor sub_exec(local_env, local_jobs);
@@ -723,8 +796,11 @@ int Builtins::builtin_retry(const std::vector<std::string>& args, Environment& e
             _exit(rc & 0xff);
         }
 
+        setpgid(pid, pid);   // in case the child exec'd before its own call
         int raw = 0;
-        if (waitpid(pid, &raw, 0) < 0) {
+        pid_t reaped;
+        while ((reaped = waitpid(pid, &raw, 0)) < 0 && errno == EINTR) { /* retry */ }
+        if (reaped < 0) {
             status = 1;
         } else if (WIFEXITED(raw)) {
             status = WEXITSTATUS(raw);
@@ -854,8 +930,9 @@ int Builtins::builtin_timeout(const std::vector<std::string>& args, Environment&
                 return false;
             };
             std::string val;
+            const char letter = (a.size() > 1 && a[1] != '-') ? a[1] : '\0';
             if (a == "-h" || a == "--help") { timeout_usage(); return 0; }
-            if (a == "-k" || str_util::starts_with(a, "--kill-after")) {
+            if (a == "-k" || letter == 'k' || str_util::starts_with(a, "--kill-after")) {
                 if (!take(val) || (kill_after = parse_duration(val)) < 0.0) {
                     std::cerr << "aswell: timeout: " << a << " needs a duration\n";
                     return 125;
@@ -863,7 +940,7 @@ int Builtins::builtin_timeout(const std::vector<std::string>& args, Environment&
                 ++i;
                 continue;
             }
-            if (a == "-s" || str_util::starts_with(a, "--signal")) {
+            if (a == "-s" || letter == 's' || str_util::starts_with(a, "--signal")) {
                 if (!take(val)) {
                     std::cerr << "aswell: timeout: " << a << " needs a signal name\n";
                     return 125;
@@ -961,20 +1038,20 @@ int Builtins::builtin_timeout(const std::vector<std::string>& args, Environment&
         return 125;
     }
     if (pid == 0) {
+        SignalManager::reset_signals_for_child();
         if (!foreground) {
             setpgid(0, 0);
             if (!direct) {
-                // The group signal is meant for the command; keep the helper that
-                // hosts it alive so the shell can reap its own children normally.
+                // This helper only exists to host the command, so it must outlive
+                // the group signal meant for the command. The ignores therefore go
+                // *after* reset_signals_for_child(): the command this helper runs
+                // gets the default dispositions back and stays killable.
                 struct sigaction ignore {};
                 ignore.sa_handler = SIG_IGN;
                 sigemptyset(&ignore.sa_mask);
-                sigaction(SIGTERM, &ignore, nullptr);
-                sigaction(SIGINT, &ignore, nullptr);
-                sigaction(signal_to_send, &ignore, nullptr);
+                for (int sig = 1; sig < NSIG; ++sig) sigaction(sig, &ignore, nullptr);
             }
         }
-        SignalManager::reset_signals_for_child();
         if (direct) {
             std::vector<char*> argv;
             for (auto& w : words) argv.push_back(const_cast<char*>(w.c_str()));
@@ -990,6 +1067,7 @@ int Builtins::builtin_timeout(const std::vector<std::string>& args, Environment&
     }
     pgid = pid;
     if (!foreground) setpgid(pid, pid);   // also covers the child racing ahead
+    TerminalLoan terminal(pgid);
 
     int status = 0;
     bool timed_out = false;

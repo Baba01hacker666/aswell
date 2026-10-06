@@ -38,6 +38,10 @@ void SignalManager::reset_signals_for_child() {
     signal(SIGTTOU, SIG_DFL);
     signal(SIGCHLD, SIG_DFL);
     signal(SIGPIPE, SIG_DFL);
+    // A wrapper such as `timeout` ignores SIGTERM so that it can survive signalling
+    // its own process group. Without this reset the wrapped command would inherit
+    // SIG_IGN and become impossible to kill.
+    signal(SIGTERM, SIG_DFL);
 }
 
 void SignalManager::handle_pending_traps(Environment& env, const std::function<void(const std::string&)>& runner) {

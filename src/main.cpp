@@ -63,12 +63,6 @@ int main(int argc, char* argv[]) {
     PluginManager plugins(env, hooks);
 
     ShellConfig early_cfg = ConfigManager::load();
-    if (!early_cfg.custom_username.empty()) {
-        env.set_var("ASWELL_USER", early_cfg.custom_username, true);
-    }
-    if (!early_cfg.custom_hostname.empty()) {
-        env.set_var("ASWELL_HOSTNAME", early_cfg.custom_hostname, true);
-    }
 
     std::string command_string;
     std::string script_path;
@@ -134,6 +128,9 @@ int main(int argc, char* argv[]) {
             // Honour the custom directory everywhere, including child processes
             // and the config/theme builtins, via the canonical env override.
             ::setenv("ASWELL_CONFIG_DIR", custom_config_path.c_str(), 1);
+            // Environment already snapshotted environ at construction time, so the
+            // shell needs its own copy or `$ASWELL_CONFIG_DIR` stays empty inside.
+            env.set_var("ASWELL_CONFIG_DIR", custom_config_path, true);
         } else if (arg == "config" || arg == "settings" || arg == "theme" || arg == "themes" ||
                    arg == "aliases" ||
                    arg == "doctor" || arg == "check" || arg == "reload") {
@@ -240,7 +237,16 @@ int main(int argc, char* argv[]) {
         // Undo the previous selection first, so `aswell config set curated_aliases ''`
         // (or a narrower selection) actually removes aliases. Only entries we
         // installed are touched — hand-written aliases are never uninstalled.
-        AliasLibrary::uninstall(env, AliasLibrary::for_names(curated_installed));
+        // Only drop entries that are still the library's own definitions: if the
+        // user has since written their own version of one of these names, replacing
+        // it would silently discard their work.
+        std::vector<std::string> stale;
+        for (const std::string& n : curated_installed) {
+            const AliasDef* def = AliasLibrary::find(n);
+            std::string current;
+            if (def && env.get_alias(n, current) && current == def->definition) stale.push_back(n);
+        }
+        AliasLibrary::uninstall(env, AliasLibrary::for_names(stale));
         curated_installed.clear();
 
         std::string curated = str_util::trim(next_cfg.curated_aliases);
@@ -370,6 +376,16 @@ int main(int argc, char* argv[]) {
     bool command_banner_enabled = false;
     bool first_apply = true;
 
+    // The prompt engine falls back to ASWELL_USER / ASWELL_HOSTNAME, so the two
+    // settings and those exports must always be updated together.
+    auto sync_identity_env = [&](const ShellConfig& cfg) {
+        if (cfg.custom_username.empty()) env.unset_var("ASWELL_USER");
+        else env.set_var("ASWELL_USER", cfg.custom_username, true);
+        if (cfg.custom_hostname.empty()) env.unset_var("ASWELL_HOSTNAME");
+        else env.set_var("ASWELL_HOSTNAME", cfg.custom_hostname, true);
+    };
+    sync_identity_env(early_cfg);
+
     auto apply_config = [&](bool announce) {
         ConfigReport report;
         ShellConfig next_cfg = ConfigManager::load(&report);
@@ -393,6 +409,10 @@ int main(int argc, char* argv[]) {
         prompt_engine.set_date_format(next_cfg.date_format);
         prompt_engine.set_custom_user(next_cfg.custom_username);
         prompt_engine.set_custom_hostname(next_cfg.custom_hostname);
+        // PromptEngine falls back to these variables, so clearing the setting has to
+        // clear the export too. Otherwise `config unset username` reports success and
+        // the prompt keeps showing the old name for the rest of the session.
+        sync_identity_env(next_cfg);
 
         editor.set_autosuggestions(next_cfg.enable_autosuggestions);
         editor.set_syntax_highlighting(next_cfg.enable_syntax_highlighting);
@@ -424,13 +444,22 @@ int main(int argc, char* argv[]) {
                 std::cerr << "aswell: " << theme_warning << "\n";
             }
 
-            std::ifstream html_f(config_dir + "/prompt.html");
-            if (html_f) {
+            const std::string html_path = config_dir + "/prompt.html";
+            std::string html;
+            bool html_exists = false;
+            if (std::ifstream html_f{html_path}) {
                 std::stringstream hs;
                 hs << html_f.rdbuf();
-                prompt_engine.set_template_html(hs.str());
+                html = hs.str();
+                html_exists = true;
+            }
+            // Same hazard as the stylesheet above: an empty or markup-less file
+            // parses to nothing and would leave the user with no prompt at all.
+            if (html_exists && (html.find('<') == std::string::npos)) {
+                std::cerr << "aswell: keeping previous prompt â " << html_path
+                          << (html.empty() ? " is empty" : " contains no markup") << "\n";
             } else {
-                prompt_engine.set_template_html(ConfigManager::build_template(next_cfg));
+                prompt_engine.set_template_html(html_exists ? html : ConfigManager::build_template(next_cfg));
             }
         }
 
@@ -503,6 +532,7 @@ int main(int argc, char* argv[]) {
         hooks.trigger_hook(HookType::ON_PROMPT);
 
         jobs.update_status();
+        jobs.notify_finished();
         size_t active_jobs = jobs.active_job_count();
         double last_duration = executor.get_last_command_duration_ms();
 
