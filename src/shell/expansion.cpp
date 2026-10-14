@@ -6,6 +6,7 @@
 #endif
 #include <pwd.h>
 #include <cmath>
+#include <cstdio>
 #include <iomanip>
 
 namespace aswell {
@@ -135,8 +136,72 @@ public:
     int64_t parse() {
         skip_ws();
         if (pos_ >= input_.size()) return 0;
-        int64_t result = parse_ternary();
+        int64_t result = parse_assignment();
         return result;
+    }
+
+    int64_t parse_assignment() {
+        skip_ws();
+        size_t saved = pos_;
+        if (std::isalpha(static_cast<unsigned char>(peek())) || peek() == '_') {
+            size_t start = pos_;
+            while (pos_ < input_.size() && (std::isalnum(static_cast<unsigned char>(input_[pos_])) || input_[pos_] == '_')) {
+                pos_++;
+            }
+            std::string name = input_.substr(start, pos_ - start);
+            skip_ws();
+
+            std::string op;
+            size_t op_start = pos_;
+            auto starts = [&](const char* o) {
+                size_t n = std::strlen(o);
+                if (pos_ + n > input_.size()) return false;
+                return input_.compare(pos_, n, o) == 0;
+            };
+            if (starts("=") && (pos_ + 1 >= input_.size() || input_[pos_ + 1] != '=')) { op = "="; pos_ += 1; }
+            else if (starts("+=")) { op = "+="; pos_ += 2; }
+            else if (starts("-=")) { op = "-="; pos_ += 2; }
+            else if (starts("*=")) { op = "*="; pos_ += 2; }
+            else if (starts("/=")) { op = "/="; pos_ += 2; }
+            else if (starts("%=")) { op = "%="; pos_ += 2; }
+            else if (starts("<<=")) { op = "<<="; pos_ += 3; }
+            else if (starts(">>=")) { op = ">>="; pos_ += 3; }
+            else if (starts("&=")) { op = "&="; pos_ += 2; }
+            else if (starts("|=")) { op = "|="; pos_ += 2; }
+            else if (starts("^=")) { op = "^="; pos_ += 2; }
+
+            if (!op.empty()) {
+                int64_t rhs = parse_assignment();
+                std::string val_str = env_.get_var(name);
+                int64_t oldv = 0;
+                if (!val_str.empty()) {
+                    try {
+                        ArithmeticParser sub_parser(val_str, env_);
+                        oldv = sub_parser.parse();
+                    } catch (...) {
+                        oldv = 0;
+                    }
+                }
+                int64_t newv = rhs;
+                if (op == "+=") newv = oldv + rhs;
+                else if (op == "-=") newv = oldv - rhs;
+                else if (op == "*=") newv = oldv * rhs;
+                else if (op == "/=") newv = (rhs != 0) ? oldv / rhs : 0;
+                else if (op == "%=") newv = (rhs != 0) ? oldv % rhs : 0;
+                else if (op == "<<=") newv = oldv << rhs;
+                else if (op == ">>=") newv = oldv >> rhs;
+                else if (op == "&=") newv = oldv & rhs;
+                else if (op == "|=") newv = oldv | rhs;
+                else if (op == "^=") newv = oldv ^ rhs;
+
+                env_.set_var(name, std::to_string(newv), env_.is_exported(name));
+                return newv;
+            }
+
+            // Not an assignment; restore and fall through.
+            pos_ = saved;
+        }
+        return parse_ternary();
     }
 
 private:
@@ -333,6 +398,52 @@ private:
 
     int64_t parse_unary() {
         skip_ws();
+        if (match("++")) {
+            skip_ws();
+            if (std::isalpha(static_cast<unsigned char>(peek())) || peek() == '_') {
+                size_t start = pos_;
+                while (pos_ < input_.size() && (std::isalnum(static_cast<unsigned char>(input_[pos_])) || input_[pos_] == '_')) {
+                    pos_++;
+                }
+                std::string var_name = input_.substr(start, pos_ - start);
+                std::string val_str = env_.get_var(var_name);
+                int64_t oldv = 0;
+                if (!val_str.empty()) {
+                    try {
+                        ArithmeticParser sub_parser(val_str, env_);
+                        oldv = sub_parser.parse();
+                    } catch (...) {
+                        oldv = 0;
+                    }
+                }
+                env_.set_var(var_name, std::to_string(oldv + 1), env_.is_exported(var_name));
+                return oldv + 1;
+            }
+            return parse_unary();
+        }
+        if (match("--")) {
+            skip_ws();
+            if (std::isalpha(static_cast<unsigned char>(peek())) || peek() == '_') {
+                size_t start = pos_;
+                while (pos_ < input_.size() && (std::isalnum(static_cast<unsigned char>(input_[pos_])) || input_[pos_] == '_')) {
+                    pos_++;
+                }
+                std::string var_name = input_.substr(start, pos_ - start);
+                std::string val_str = env_.get_var(var_name);
+                int64_t oldv = 0;
+                if (!val_str.empty()) {
+                    try {
+                        ArithmeticParser sub_parser(val_str, env_);
+                        oldv = sub_parser.parse();
+                    } catch (...) {
+                        oldv = 0;
+                    }
+                }
+                env_.set_var(var_name, std::to_string(oldv - 1), env_.is_exported(var_name));
+                return oldv - 1;
+            }
+            return parse_unary();
+        }
         if (match("+")) {
             return parse_unary();
         }
@@ -377,14 +488,29 @@ private:
             }
             std::string var_name = input_.substr(start, pos_ - start);
             std::string val_str = env_.get_var(var_name);
-            if (val_str.empty()) return 0;
-            try {
-                // Recursively evaluate variable value as arithmetic
-                ArithmeticParser sub_parser(val_str, env_);
-                return sub_parser.parse();
-            } catch (...) {
-                return 0;
+            int64_t result = 0;
+            if (!val_str.empty()) {
+                try {
+                    // Recursively evaluate variable value as arithmetic
+                    ArithmeticParser sub_parser(val_str, env_);
+                    result = sub_parser.parse();
+                } catch (...) {
+                    result = 0;
+                }
             }
+            skip_ws();
+            // Postfix increment/decrement: `x++`, `x--`
+            if (pos_ + 1 < input_.size() && input_[pos_] == '+' && input_[pos_ + 1] == '+') {
+                pos_ += 2;
+                env_.set_var(var_name, std::to_string(result + 1), env_.is_exported(var_name));
+                return result;
+            }
+            if (pos_ + 1 < input_.size() && input_[pos_] == '-' && input_[pos_ + 1] == '-') {
+                pos_ += 2;
+                env_.set_var(var_name, std::to_string(result - 1), env_.is_exported(var_name));
+                return result;
+            }
+            return result;
         }
 
         // Advance past unknown char

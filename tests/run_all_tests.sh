@@ -745,13 +745,11 @@ rm -f "$ANONHOME/.config/aswell/config.txt"
 
 cat > /tmp/aswell_ancestors.sh <<'ANCESTOR_EOF'
 #!/bin/sh
-# Count how many processes in our ancestry are called "aswell".
-p=$$
-while [ "$p" -gt 1 ]; do
-    [ "$(cat /proc/$p/comm 2>/dev/null)" = "aswell" ] && echo hit
-    p=$(cut -d" " -f4 /proc/$p/stat 2>/dev/null)
-    [ -z "$p" ] && break
-done
+# The exec shortcut is observable through our *immediate* parent: a normal
+# `aswell -c` forks a child that execs this script (parent == "aswell"), while
+# `--anon` execs in place so the parent is the process that launched aswell.
+p=$(cut -d" " -f4 /proc/$$/stat 2>/dev/null)
+[ "$(cat /proc/$p/comm 2>/dev/null)" = "aswell" ] && echo hit
 ANCESTOR_EOF
 chmod +x /tmp/aswell_ancestors.sh
 A=$(HOME=$ANONHOME ASWELL_CONFIG_DIR=$ANONHOME/.config/aswell ./bin/aswell -c /tmp/aswell_ancestors.sh | wc -l)

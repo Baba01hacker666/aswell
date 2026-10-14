@@ -284,17 +284,68 @@ Token Lexer::read_word() {
         }
 
         // Double quotes
-        if (c == '\"') {
+        if (c == '"') {
             has_quotes = true;
             val += next_char(); // retain quote for expansion stage
             while (pos_ < input_.size()) {
-                char qc = next_char();
-                val += qc;
-                if (qc == '\\' && pos_ < input_.size()) {
+                // Command substitution inside the quoted word: consume wholesale so
+                // inner quotes / parens / spaces cannot break the outer word.
+                if (pos_ + 1 < input_.size() && input_[pos_] == '$' && input_[pos_ + 1] == '(') {
+                    val += next_char(); // '$'
+                    val += next_char(); // '('
+                    int paren_depth = 1;
+                    while (pos_ < input_.size() && paren_depth > 0) {
+                        char sc = next_char();
+                        val += sc;
+                        if (sc == '(') paren_depth++;
+                        else if (sc == ')') paren_depth--;
+                        else if (sc == '\'') {
+                            while (pos_ < input_.size()) {
+                                char sqc = next_char();
+                                val += sqc;
+                                if (sqc == '\'') break;
+                            }
+                        } else if (sc == '"') {
+                            while (pos_ < input_.size()) {
+                                char dqc = next_char();
+                                val += dqc;
+                                if (dqc == '\\' && pos_ < input_.size()) {
+                                    val += next_char();
+                                } else if (dqc == '"') {
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    continue;
+                }
+
+                // Backticks inside the quoted word.
+                if (pos_ < input_.size() && input_[pos_] == '`') {
                     val += next_char();
-                } else if (qc == '\"') {
+                    while (pos_ < input_.size()) {
+                        char bc = next_char();
+                        val += bc;
+                        if (bc == '\\' && pos_ < input_.size()) {
+                            val += next_char();
+                        } else if (bc == '`') {
+                            break;
+                        }
+                    }
+                    continue;
+                }
+
+                char qc = input_[pos_];
+                if (qc == '"') {
+                    val += next_char();
                     break;
                 }
+                if (qc == '\\' && pos_ + 1 < input_.size()) {
+                    val += next_char();
+                    val += next_char();
+                    continue;
+                }
+                val += next_char();
             }
             continue;
         }

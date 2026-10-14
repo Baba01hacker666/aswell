@@ -12,6 +12,7 @@
 #include <cctype>
 #include <algorithm>
 #include <dirent.h>
+#include <termios.h>
 
 namespace aswell {
 
@@ -698,7 +699,12 @@ int Builtins::builtin_printf(const std::vector<std::string>& args, Environment& 
     const std::string& fmt = args[1];
     size_t arg_idx = 2;
 
-    for (size_t i = 0; i < fmt.size(); ++i) {
+    // POSIX printf reuses the format string for any extra arguments, so
+    // `printf "%s\n" a b c` prints all three. A format with no conversion
+    // specifiers is printed exactly once (extra arguments are then ignored).
+    do {
+        size_t consumed_before = arg_idx;
+        for (size_t i = 0; i < fmt.size(); ++i) {
         if (fmt[i] == '\\' && i + 1 < fmt.size()) {
             char next = fmt[i + 1];
             if (next == 'n') { std::cout << '\n'; i++; continue; }
@@ -793,18 +799,25 @@ int Builtins::builtin_printf(const std::vector<std::string>& args, Environment& 
 
         std::cout << fmt[i];
     }
-    std::cout.flush();
+        std::cout.flush();
+        if (arg_idx == consumed_before) break; // no conversion consumed an arg
+    } while (arg_idx < args.size());
+
     return 0;
 }
 
 int Builtins::builtin_read(const std::vector<std::string>& args, Environment& env) {
     std::string prompt;
     bool raw = false;
+    bool silent = false;
     size_t idx = 1;
 
     while (idx < args.size()) {
         if (args[idx] == "-r") {
             raw = true;
+            idx++;
+        } else if (args[idx] == "-s") {
+            silent = true;
             idx++;
         } else if (args[idx] == "-p" && idx + 1 < args.size()) {
             prompt = args[idx + 1];
@@ -819,10 +832,23 @@ int Builtins::builtin_read(const std::vector<std::string>& args, Environment& en
         std::cout.flush();
     }
 
+    struct termios saved_tio{};
+    bool have_tio = false;
+    if (silent && isatty(STDIN_FILENO)) {
+        if (tcgetattr(STDIN_FILENO, &saved_tio) == 0) {
+            struct termios tio = saved_tio;
+            tio.c_lflag &= ~ECHO;
+            if (tcsetattr(STDIN_FILENO, TCSANOW, &tio) == 0) have_tio = true;
+        }
+    }
+
     std::string line;
     if (!std::getline(std::cin, line)) {
+        if (have_tio) tcsetattr(STDIN_FILENO, TCSANOW, &saved_tio);
         return 1;
     }
+    if (have_tio) tcsetattr(STDIN_FILENO, TCSANOW, &saved_tio);
+    if (silent) std::cout << '\n';
 
     if (!raw && !line.empty() && line.back() == '\\') {
         // Can accumulate continuation lines
