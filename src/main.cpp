@@ -365,6 +365,16 @@ int main(int argc, char* argv[]) {
     // settings application (prompt, theme, editor) happens in apply_config()
     // below so the exact same code path runs on hot reload.
     ShellConfig cfg = ConfigManager::load();
+    // A first-time user should not have to create directories or a config file
+    // by hand: scaffold them on the first interactive launch so `aswell doctor`
+    // is clean and `aswell config set` always works.
+    if (!env.opt_anon && !env.opt_safe_mode) {
+        std::string cfg_path = ConfigManager::get_config_dir() + "/config.txt";
+        struct stat st{};
+        if (stat(cfg_path.c_str(), &st) != 0) {
+            ConfigManager::save(cfg);
+        }
+    }
     env.opt_vi_mode = cfg.vi_mode;
     if (cfg.enable_colored_output && !env.opt_no_theme) {
         env.init_color_aliases();
